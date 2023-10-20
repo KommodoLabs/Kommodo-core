@@ -68,7 +68,6 @@ contract Kommodo {
     mapping(int24 => mapping(uint256 => Borrower)) public borrower;
     mapping(int24 => mapping(address => Withdraw)) public withdraws;
 
-
     function initialize(address _manager, address _factory, address _tokenA, address _tokenB, int24 _tickDelta, uint24 _poolFee, uint24 _interest) public {
         require(initialized == false, "initialize: already initialized");
         initialized = true;
@@ -86,7 +85,8 @@ contract Kommodo {
 
     // Lend functions
     function provide(int24 tickLower, uint128 amountA, uint128 amountB) public {
-        //Transfer funds and apporve manager
+        //Transfer funds and approve manager
+        //Notice no safety checks for minimal implementation - checks in calling contract 
         TransferHelper.safeTransferFrom(address(tokenA), msg.sender, address(this), amountA); 
         TransferHelper.safeApprove(address(tokenA), address(manager), amountA); 
         TransferHelper.safeTransferFrom(address(tokenB), msg.sender, address(this), amountB); 
@@ -151,11 +151,11 @@ contract Kommodo {
         TransferHelper.safeApprove(address(tokenA), address(manager), colA.toUint256());    
         TransferHelper.safeTransferFrom(address(tokenB), msg.sender, address(this), colB.toUint256()); 
         TransferHelper.safeApprove(address(tokenB), address(manager), colB.toUint256());           
-    {    
+        {    
         (uint256 _id, uint128 _liquidity) = addLiquidity(tickLowerCol, collateral[tickLowerCol].collateralId, (colA.toUint256()).toUint128(), (colB.toUint256()).toUint128());
         collateral[tickLowerCol] = Collateral(_id, _liquidity);         
         borrower[tickLowerCol][id] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp);    
-    }
+        }
         //Withdraw liquidity from pool
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount - _interest, amountAMin, amountBMin);
         checkCollateral(tick, tickLowerCol, amount.toInt128(), _amountA, _amountB);
