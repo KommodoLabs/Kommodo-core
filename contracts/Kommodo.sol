@@ -133,32 +133,31 @@ contract Kommodo {
     }
 
     // Borrow functions
-    function open(int24 tickLower, int24 tickLowerCol, uint128 amount, uint128 _interest, uint128 amountAMin, uint128 amountBMin) public {
+    //@notice: open() function allows depositing more collateral than needed
+    function open(int24 tickLower, int24 tickLowerCol, uint128 amount, uint128 amountAMin, uint128 amountBMin, uint128 colA, uint128 colB, uint128 _interest) public {
         //Check enough assets available
-        require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "open: insufficient funds available");
         require(tickLower != tickLowerCol, "open: false ticks");
+        require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "open: insufficient funds available");
         //Mint Collateral NFT
         uint256 id = nextCollateralId;
         nextCollateralId += 1;
         collateralNFT.mint(msg.sender, id);  
-        //Calculate collateral needed 
-        (,int24 tick,,,,,) = pool.slot0();
-        (int256 colA, int256 colB) = liquidityToCollateral(tick, tickLower, amount.toInt128());
-        //Lock interest payment
-        liquidity[tickLower].locked += amount;
+        //Lock liquidity for loan 
+        liquidity[tickLower].locked += amount - _interest;
         //Add Collateral to pool                
-        TransferHelper.safeTransferFrom(address(tokenA), msg.sender, address(this), colA.toUint256()); 
-        TransferHelper.safeApprove(address(tokenA), address(manager), colA.toUint256());    
-        TransferHelper.safeTransferFrom(address(tokenB), msg.sender, address(this), colB.toUint256()); 
-        TransferHelper.safeApprove(address(tokenB), address(manager), colB.toUint256());           
-        {    
-        (uint256 _id, uint128 _liquidity) = addLiquidity(tickLowerCol, collateral[tickLowerCol].collateralId, (colA.toUint256()).toUint128(), (colB.toUint256()).toUint128());
-        collateral[tickLowerCol] = Collateral(_id, _liquidity);         
+        TransferHelper.safeTransferFrom(address(tokenA), msg.sender, address(this), colA); 
+        TransferHelper.safeApprove(address(tokenA), address(manager), colA);    
+        TransferHelper.safeTransferFrom(address(tokenB), msg.sender, address(this), colB); 
+        TransferHelper.safeApprove(address(tokenB), address(manager), colB);            
+        (uint256 _id, uint128 _liquidity) = addLiquidity(tickLowerCol, collateral[tickLowerCol].collateralId, colA, colB);
+        //Store collateral global and individual
+        collateral[tickLowerCol].collateralId = _id;
+        collateral[tickLowerCol].amount += _liquidity;         
         borrower[tickLowerCol][id] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp);    
-        }
+        //Check requirement collateral >= borrow
+        checkRequirement(tickLower, tickLowerCol, amount.toInt128(), _liquidity.toInt128());
         //Withdraw liquidity from pool
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount - _interest, amountAMin, amountBMin);
-        checkCollateral(tick, tickLowerCol, amount.toInt128(), _amountA, _amountB);
         collectLiquidity(liquidity[tickLower].liquidityId, _amountA.toUint128(), _amountB.toUint128());  
     }
 
@@ -168,6 +167,8 @@ contract Kommodo {
         uint128 _liquidityCol = borrower[tickLowerCol][id].liquidityCol;
         //Interest calculations
         uint256 required = (block.timestamp - borrower[tickLowerCol][id].start) * interest;
+        //Release locked liquidity
+        liquidity[_tickLower].locked -= _liquidity - borrower[tickLowerCol][id].interest;   
         if (borrower[tickLowerCol][id].interest >= required) {
             //Only owner can close open position
             require(collateralNFT.ownerOf(id) == msg.sender, "close: not the owner");
@@ -176,12 +177,10 @@ contract Kommodo {
         } 
         //Add interest to liquidity
         liquidity[_tickLower].liquidity += borrower[tickLowerCol][id].interest;
-        //Release locked liquidity
-        liquidity[_tickLower].locked -= _liquidity;   
         //Burn collateral NFT
         collateralNFT.burn(id); 
         collateral[tickLowerCol].amount -= _liquidityCol;  
-        delete borrower[tickLowerCol][id];
+        delete borrower[tickLowerCol][id];     
         //Deposit liquidity to pool
         (uint160 priceX96,int24 tick,,,,,) = pool.slot0();
         (int256 amountA, int256 amountB) = liquidityToAmounts(tick, _tickLower, priceX96, _liquidity.toInt128());
@@ -195,7 +194,7 @@ contract Kommodo {
         collectLiquidity(collateral[tickLowerCol].collateralId, _amountA.toUint128(), _amountB.toUint128());
     }
 
-    //Internal functions -- liquidity adjustmens to pool
+    //Internal functions
     function addLiquidity(int24 tickLower, uint256 id, uint128 amountA, uint128 amountB) internal returns(uint256, uint128){
         if (id == 0) {
             //Mint LP pool position
@@ -252,7 +251,32 @@ contract Kommodo {
         manager.collect(paramsCollect);     
     }
 
-    function liquidityToAmounts(int24 tickCurrent, int24 tick, uint160 priceX96, int128 _liquidity) internal view returns(int256 amount0, int256 amount1){
+    function checkRequirement(int24 tickBor, int24 tickCol, int128 amountBor, int128 amountCol) internal view {
+        int256 bor0 = SqrtPriceMath.getAmount0Delta(
+                TickMath.getSqrtRatioAtTick(tickBor),
+                TickMath.getSqrtRatioAtTick(tickBor + tickDelta),  
+                amountBor
+        ); 
+        int256 bor1 = SqrtPriceMath.getAmount1Delta(
+                TickMath.getSqrtRatioAtTick(tickBor),
+                TickMath.getSqrtRatioAtTick(tickBor + tickDelta),  
+                amountBor
+        );
+        int256 col0 = SqrtPriceMath.getAmount0Delta(
+                TickMath.getSqrtRatioAtTick(tickCol),
+                TickMath.getSqrtRatioAtTick(tickCol + tickDelta),  
+                amountCol
+        ); 
+        int256 col1 = SqrtPriceMath.getAmount1Delta(
+                TickMath.getSqrtRatioAtTick(tickCol),
+                TickMath.getSqrtRatioAtTick(tickCol + tickDelta),  
+                amountCol
+        );
+        require(bor0 <= col0 && bor1 <= col1, "checkRequirement: insufficient collateral for borrow");
+    }
+
+    //View function
+    function liquidityToAmounts(int24 tickCurrent, int24 tick, uint160 priceX96, int128 _liquidity) public view returns(int256 amount0, int256 amount1){
         if (_liquidity != 0) {
             if (tickCurrent < tick) {
                 // current tick is below the passed range; liquidity can only become in range by crossing from left to
@@ -284,30 +308,6 @@ contract Kommodo {
                 );
             }
         }
-    }
-
-    function liquidityToCollateral(int24 tickCurrent, int24 tick, int128 amount) internal view returns(int256 amount0, int256 amount1){
-        //Inverse of liquidityToAmounts() 
-        if(tick < tickCurrent) {
-            amount0 = SqrtPriceMath.getAmount0Delta(
-                TickMath.getSqrtRatioAtTick(tick),
-                TickMath.getSqrtRatioAtTick(tick + tickDelta),  
-                amount
-            );  
-        } else if (tick > tickCurrent) {
-            amount1 = SqrtPriceMath.getAmount1Delta(
-                TickMath.getSqrtRatioAtTick(tick),
-                TickMath.getSqrtRatioAtTick(tick + tickDelta),  
-                amount
-            );
-        } else {
-            revert("Open: ticks not outside current tick");
-        }
-    }
-
-    function checkCollateral(int24 tickCurrent, int24 tick, int128 amount, uint256 _amountA, uint256 _amountB) internal view {
-        (int256 valueA, int256 valueB) = liquidityToCollateral(tickCurrent, tick, amount);
-        require(valueA.toUint256() > _amountA && valueB == 0 || valueA == 0 && valueB.toUint256() > _amountB, "checkCollateral: collateral value below borrow value");   
     }
 }
 

@@ -151,8 +151,7 @@ describe("Kommodo_test", function () {
       const [owner, signer2] = await ethers.getSigners();
       //Get amount
       let base = new bn(10)
-      let exp = new bn(18)
-      let amount = base.pow(exp)
+      let amount = base.pow("18")
       //Get provide() required data
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
@@ -213,38 +212,177 @@ describe("Kommodo_test", function () {
       expect(withdraw.timestamp).to.not.equal(0)
     })
     it('Should withdraw from pool', async function () {
-      //Add test delayed withdraw
-      
-    })
-    it('Should borrow from pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-      
+      const [owner, signer2] = await ethers.getSigners();  
+      //Get amount
       let base = new bn(10)
-      let exp = new bn(18)
-      let amount = base.pow(exp)
-
+      let amount = base.pow("18").div("2").minus("1")
+      //Get withdraw() required data
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
+      //Check withdraw exists
+      withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)
+      if (withdraw.amountA == 0) {
+        expect(withdraw.amountB).to.not.equal(0)
+      } else {
+        expect(withdraw.amountA).to.not.equal(0)
+      }
+      expect(withdraw.timestamp).to.not.equal(0)
+      //Check balance zero before
+      expect(await tokenA.balanceOf(signer2.address)).to.equal(0)
+      expect(await weth.balanceOf(signer2.address)).to.equal(0)
+      await kommodo.connect(signer2).withdraw(tickLower)
+      //Check withdraw cleared
+      withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)
+      expect(withdraw.amountA).to.equal(0)
+      expect(withdraw.amountB).to.equal(0)
+      expect(withdraw.timestamp).to.equal(0)
+      //Check withdraw received
+      balanceA = await tokenA.balanceOf(signer2.address)
+      balanceB = await weth.balanceOf(signer2.address)
+      if (balanceA == 0) {
+        expect(balanceB).to.equal(amount.toString())
+      } else {
+        expect(balanceA).to.equal(amount.toString())
+      }
+    })
+    it('Should borrow from pool', async function () {
+      const [owner, signer2] = await ethers.getSigners();
+      //Get amount
+      let base = new bn(10)
+      let amount = base.pow("18")
+      //Get borrow() required data
+      let slot0 = await pool.slot0()
+      let spacing = await pool.tickSpacing()
+      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
+      //Mint collateral funds  
+      await tokenA.connect(owner).mint(amount.toString())
+      await weth.connect(owner).deposit({value: amount.toString()})
+      await tokenA.connect(owner).approve(kommodo.address, amount.toString())
+		  await weth.connect(owner).approve(kommodo.address, amount.toString())
+      
+      
+      //Starting balance owner
+      balance0 = await tokenA.balanceOf(owner.address)
+      balance1 = await weth.balanceOf(owner.address)
+      console.log("before borrow")
+      console.log(balance0.toString())
+      console.log(balance1.toString())
 
+
+      //Call borrow
+      await kommodo.connect(owner).open(
+        tickLower,                          //tick lower borrow
+        slot0.tick + spacing,               //tick lower collateral
+        10000000000,                        //liquidity borrow
+        0,                                  //min amountA borrow
+        0,                                  //min amountB borrow
+        5003502,                            //amountA collateral
+        0,                                  //amountB collateral
+        0                                   //interest deduction/deposit
+      )
+
+      //5003502 == minmum deposit collateral (based on the tick used!)
+      //4996001 == borrow amount
+      
+      balance0 = await tokenA.balanceOf(owner.address)
+      balance1 = await weth.balanceOf(owner.address)
+      console.log("after borrow")
+      console.log(balance0.toString())
+      console.log(balance1.toString())
+
+      //Check borrow
+      collateral = await kommodo.borrower(slot0.tick + spacing, 1)
+      //console.log(collateral)
+
+
+    })
+    it('Should close borrow from pool', async function () {
+      const [owner, signer2] = await ethers.getSigners();
+      let slot0 = await pool.slot0()
+      let spacing = await pool.tickSpacing()
+
+      //Approve borrowed amount
+      await tokenA.connect(owner).approve(kommodo.address, "4996002")
+
+
+      //Starting balance owner
+      balance0 = await tokenA.balanceOf(owner.address)
+      balance1 = await weth.balanceOf(owner.address)
+      console.log("before close")
+      console.log(balance0.toString())
+      console.log(balance1.toString())
+      
+      //Call close
+      await kommodo.connect(owner).close(slot0.tick + spacing, 1)
+
+      //End balance owner
+      balance0 = await tokenA.balanceOf(owner.address)
+      balance1 = await weth.balanceOf(owner.address)
+      console.log("after close")
+      console.log(balance0.toString())
+      console.log(balance1.toString())
+    })
+  })
+  describe("Kommodo_gas", function () {
+    it('Kommodo gas analyses', async function () {
+      //Provide estimate
+      const [owner, signer2] = await ethers.getSigners()
+      let base = new bn(10)
+      let amount = base.pow("18")
+      let slot0 = await pool.slot0()
+      let spacing = await pool.tickSpacing()
+      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
       await tokenA.connect(signer2).mint(amount.toString())
       await weth.connect(signer2).deposit({value: amount.toString()})
       await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
 		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-
-      //Call borrow
-      await kommodo.connect(signer2).open(tickLower, slot0.tick + spacing, amount.toString(),1, 0, 0)
-    })
-    it('Should close borrow from pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-
-      let slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-
-      //Call close
-      await kommodo.connect(signer2).close(slot0.tick + spacing, 1)
-
-
+      gasProvide = await kommodo.connect(signer2).estimateGas.provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
+      console.log("Povide: ", gasProvide.toString());
+      //Take estimate
+      let share = (await kommodo.connect(signer2).lender(tickLower, 1)).div(2)
+      let withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)      
+      gasTake = await kommodo.connect(signer2).estimateGas.take(tickLower, 1, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      console.log("Take: ", gasTake.toString());
+      //Withdraw estimate
+      await tokenA.connect(signer2).mint(amount.toString())
+      await weth.connect(signer2).deposit({value: amount.toString()})
+      await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
+		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
+      await kommodo.connect(signer2).provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
+      await kommodo.connect(signer2).take(tickLower, 1, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      gasWithdraw = await kommodo.connect(signer2).estimateGas.withdraw(tickLower)
+      console.log("Withdraw: ", gasWithdraw.toString());
+      //Borrow estimate
+      await tokenA.connect(owner).mint(amount.toString())
+      await weth.connect(owner).deposit({value: amount.toString()})
+      await tokenA.connect(owner).approve(kommodo.address, amount.toString())
+		  await weth.connect(owner).approve(kommodo.address, amount.toString())
+      gasBorrow = await kommodo.connect(owner).estimateGas.open(
+        tickLower,                          //tick lower borrow
+        slot0.tick + spacing,               //tick lower collateral
+        10000000000,                        //liquidity borrow
+        0,                                  //min amountA borrow
+        0,                                  //min amountB borrow
+        5003502,                            //amountA collateral
+        0,                                  //amountB collateral
+        0                                   //interest deduction/deposit
+      )
+      console.log("Borrow: ", gasBorrow.toString());
+      //Close estimate
+      await kommodo.connect(owner).open(
+        tickLower,                          //tick lower borrow
+        slot0.tick + spacing,               //tick lower collateral
+        10000000000,                        //liquidity borrow
+        0,                                  //min amountA borrow
+        0,                                  //min amountB borrow
+        5003502,                            //amountA collateral
+        0,                                  //amountB collateral
+        0                                   //interest deduction/deposit
+      )
+      await tokenA.connect(owner).approve(kommodo.address, "4996002")
+      gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, 2)
+      console.log("Close: ", gasClose.toString());
     })
   })
 })
@@ -258,17 +396,30 @@ Test implementations:
   - FAIL WHEN PROVIDE SHARE == 0
   - SHARE CHANGE AFTER INTEREST DEPOSIT
 - TAKE()
-  - SUCCESS TAKE() WHEN OWNER
+  x SUCCESS TAKE() WHEN OWNER
   - FAIL TAKE() WHEN NOT OWNER
   - FAIL TAKE() NO POOL LIQUIDITY
   - FAIL TAKE() INSUFFICIENT USER SHARES
   - FAIL TAKE() INSUFFICIENT USER LIQ
 - WITHDRAW()
-  - SUCCESS WITHDRAW AFTER DELAY
+  x SUCCESS WITHDRAW AFTER DELAY
   - FAIL WITHDRAW BEFORE DELAY
   - FAIL WHEN NO WITHDRAW AVAILABLE
+- BORROW()
+  - SUCCESS BORROW()
+- CLOSE()
+  - SUCCESS CLOSE()
 
 
+
+
+
+TODO:
+  - ADD CHECKS TO TESTS BORROW && CLOSE
+
+  - CHANGE INTEREST PAYMENT -> LINEAIR BASED ON DELTA Pc/Pb ==> WITHIN CLOSE() 
+  - ADD REQUIRE MINIMUM AMOUNT OF INTEREST (minimum percentage of liquidity + > 0)
+  - ADD FACTORY + GASANALYSES DEPLOY NEW POOL
 
 */
 
