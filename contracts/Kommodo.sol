@@ -133,7 +133,7 @@ contract Kommodo {
     }
 
     // Borrow functions
-    //@notice: open() function allows depositing more collateral than needed
+    // @notice: open() function allows depositing more collateral than needed
     function open(int24 tickLower, int24 tickLowerCol, uint128 amount, uint128 amountAMin, uint128 amountBMin, uint128 colA, uint128 colB, uint128 _interest) public {
         //Check enough assets available
         require(tickLower != tickLowerCol, "open: false ticks");
@@ -174,9 +174,9 @@ contract Kommodo {
             require(collateralNFT.ownerOf(id) == msg.sender, "close: not the owner");
             //Return unused interest by lowering the required liquidity deposit
             _liquidity = _liquidity - (borrower[tickLowerCol][id].interest - required.toUint128());
+            //Add interest to liquidity
+            liquidity[_tickLower].liquidity += borrower[tickLowerCol][id].interest - required.toUint128();
         } 
-        //Add interest to liquidity
-        liquidity[_tickLower].liquidity += borrower[tickLowerCol][id].interest;
         //Burn collateral NFT
         collateralNFT.burn(id); 
         collateral[tickLowerCol].amount -= _liquidityCol;  
@@ -189,7 +189,7 @@ contract Kommodo {
         TransferHelper.safeTransferFrom(address(tokenB), msg.sender, address(this), amountB.toUint256()); 
         TransferHelper.safeApprove(address(tokenB), address(manager), amountB.toUint256());    
         addLiquidity(_tickLower, liquidity[_tickLower].liquidityId, (amountA.toUint256()).toUint128(), (amountB.toUint256()).toUint128());
-        //Withdraw collateral form pool
+        //Withdraw collateral from pool
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, _liquidityCol, 0, 0);
         collectLiquidity(collateral[tickLowerCol].collateralId, _amountA.toUint128(), _amountB.toUint128());
     }
