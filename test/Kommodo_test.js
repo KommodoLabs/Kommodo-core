@@ -130,7 +130,7 @@ describe("Kommodo_test", function () {
       tokenAdress0 = weth.address;
       tokenAdress1 = tokenA.address
     }
-    await kommodo.connect(signer2).initialize(nonfungiblePositionManager.address, factory.address, tokenAdress0, tokenAdress1, spacing, 500, 1)
+    await kommodo.connect(signer2).initialize(nonfungiblePositionManager.address, factory.address, tokenAdress0, tokenAdress1, spacing, 500, 10, 1)
     addressLNFT = await kommodo.connect(signer2).liquidityNFT()
     liquidityNFT = new Contract(
       addressLNFT,
@@ -275,11 +275,11 @@ describe("Kommodo_test", function () {
         10000                               //interest deduction/deposit
       )
       //Check after borrow balance
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4995996")).toString())
+      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991000")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Check locked 
       liquidity = await kommodo.liquidity(tickLower)
-      expect(liquidity.locked).to.equal("9999990000")
+      expect(liquidity.locked).to.equal("9989990000")
       //Check collateral stored
       collateral = await kommodo.collateral(slot0.tick + spacing)
       expect(collateral.collateralId).to.equal("2")
@@ -307,12 +307,12 @@ describe("Kommodo_test", function () {
       //Approve borrowed amount
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
       //Check after borrow balance
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4995996")).toString())
+      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991000")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Call close
       await kommodo.connect(owner).close(slot0.tick + spacing, 1)
-      //Check return balance (no interest payed) and minus 1 for rounding LP
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
+      //Check return balance (some interest payed) and minus 1 for rounding LP
+      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.minus("5002")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
       //Check locked 
       liquidity = await kommodo.liquidity(tickLower)
@@ -375,7 +375,7 @@ describe("Kommodo_test", function () {
         0,                                  //min amountB borrow
         5003502,                            //amountA collateral
         0,                                  //amountB collateral
-        0                                   //interest deduction/deposit
+        10                                  //interest deduction/deposit
       )
       console.log("Borrow: ", gasBorrow.toString());
       //Close estimate
@@ -387,7 +387,7 @@ describe("Kommodo_test", function () {
         0,                                  //min amountB borrow
         5003502,                            //amountA collateral
         0,                                  //amountB collateral
-        0                                   //interest deduction/deposit
+        10                                   //interest deduction/deposit
       )
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
       gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, 2)
@@ -419,14 +419,20 @@ Test implementations:
   - SUCCESS CLOSE AFTER INTEREST BY NON OWNER
 
 
-TODO:
-  - CHANGE INTEREST PAYMENT -> LINEAIR BASED ON DELTA Pc/Pb ==> WITHIN CLOSE() 
-  - ADD REQUIRE MINIMUM AMOUNT OF INTEREST (minimum percentage of liquidity + > 0)
-    - CHECK MINIMUM INTEREST BASED ON RECEIVED AMOUNT DIFFERENCE? ELSE FREE BORROW!
-  - ADD FACTORY + GASANALYSES DEPLOY NEW POOL
 
+TODO:
+  - ADJUST FEE IMPLEMENTATION (OPEN() = CHECK MINIMAL INTEREST BASED ON FEE, CLOSE() ONLY REDUCE BY INTEREST MINUS STARTING FEE)
+  - NO STORAGE OF FEE IN BORROW POSITIONS
+
+  - ADD FACTORY + GASANALYSES DEPLOY NEW POOL
+  - UNISWAPV3 LP FEE EFFECT?
+    - ONLY WITHDRAW AMOUNT SELECTED (NOT INTEREST STORED AS TOKENSOWED -> THEREFORE NO PROBLEM)
+    - ADD WITHDRAW & COLLECTION OF FEES FUNCTION (BEST FOR LP TO CALL BEFORE TAKE())?
+
+  - ADD TEST CASES FOR FAILS + CLEANUP CODE  
   - ADD ARRAY OF LIQUIDITY (FOR FRONT END QUERYING)
 
+  - START MINIMAL FRONT-END! 
 */
 
 

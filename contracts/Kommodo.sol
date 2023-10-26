@@ -38,6 +38,7 @@ contract Kommodo {
         uint128 liquidity;
         uint128 liquidityCol;
         uint128 interest;
+        uint128 fee;
         uint256 start;
     }
 
@@ -57,8 +58,13 @@ contract Kommodo {
     bool public initialized;
     int24 public tickDelta;
     uint24 public poolFee; 
-    uint24 public interest;
-
+    
+    //Interest as minimal interest per second per tickdelta -> 10^12 value 
+    uint128 public BASE_FEE = 10000;
+    uint128 public BASE_INTEREST = 10e12;
+    uint128 public fee;
+    uint128 public interest;
+   
     uint256 private nextLiquidityId = 1;
     uint256 private nextCollateralId = 1;
 
@@ -68,7 +74,7 @@ contract Kommodo {
     mapping(int24 => mapping(uint256 => Borrower)) public borrower;
     mapping(int24 => mapping(address => Withdraw)) public withdraws;
 
-    function initialize(address _manager, address _factory, address _tokenA, address _tokenB, int24 _tickDelta, uint24 _poolFee, uint24 _interest) public {
+    function initialize(address _manager, address _factory, address _tokenA, address _tokenB, int24 _tickDelta, uint24 _poolFee, uint128 _fee, uint128 _interest) public {
         require(initialized == false, "initialize: already initialized");
         initialized = true;
         IUniswapV3Factory factory = IUniswapV3Factory(_factory);
@@ -78,6 +84,7 @@ contract Kommodo {
         tokenB = IERC20(_tokenB);
         tickDelta = _tickDelta;
         poolFee = _poolFee;
+        fee = _fee;
         interest = _interest;
         liquidityNFT = new Positions("testLiquid", "TSTL");
         collateralNFT = new Positions("testBorrow", "TSTB");
@@ -138,12 +145,13 @@ contract Kommodo {
         //Check enough assets available
         require(tickLower != tickLowerCol, "open: false ticks");
         require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "open: insufficient funds available");
+        //Check interest available
+        require(_interest != 0, "open: insufficient interest");
+        require(amount > 10000, "open: insufficient liquidity for startingfee");
         //Mint Collateral NFT
         uint256 id = nextCollateralId;
         nextCollateralId += 1;
         collateralNFT.mint(msg.sender, id);  
-        //Lock liquidity for loan 
-        liquidity[tickLower].locked += amount - _interest;
         //Add Collateral to pool                
         TransferHelper.safeTransferFrom(address(tokenA), msg.sender, address(this), colA); 
         TransferHelper.safeApprove(address(tokenA), address(manager), colA);    
@@ -153,7 +161,11 @@ contract Kommodo {
         //Store collateral global and individual
         collateral[tickLowerCol].collateralId = _id;
         collateral[tickLowerCol].amount += _liquidity;         
-        borrower[tickLowerCol][id] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp);    
+        borrower[tickLowerCol][id] = Borrower(tickLower, amount, _liquidity, _interest, amount * 10 / 10000,block.timestamp);    
+        //Add starting fee to interest
+        _interest += amount * 10 / BASE_FEE;
+        //Lock liquidity for loan 
+        liquidity[tickLower].locked += amount - _interest;
         //Check requirement collateral >= borrow
         checkRequirement(tickLower, tickLowerCol, amount.toInt128(), _liquidity.toInt128());
         //Withdraw liquidity from pool
@@ -165,10 +177,10 @@ contract Kommodo {
         int24 _tickLower = borrower[tickLowerCol][id].tick;
         uint128 _liquidity = borrower[tickLowerCol][id].liquidity;
         uint128 _liquidityCol = borrower[tickLowerCol][id].liquidityCol;
-        //Interest calculations
-        uint256 required = (block.timestamp - borrower[tickLowerCol][id].start) * interest;
+        //Calculate interest
+        uint256 required = tickInterest(_tickLower, tickLowerCol, _liquidity, borrower[tickLowerCol][id].start);
         //Release locked liquidity
-        liquidity[_tickLower].locked -= _liquidity - borrower[tickLowerCol][id].interest;   
+        liquidity[_tickLower].locked -= _liquidity - borrower[tickLowerCol][id].interest - borrower[tickLowerCol][id].fee;   
         if (borrower[tickLowerCol][id].interest >= required) {
             //Only owner can close open position
             require(collateralNFT.ownerOf(id) == msg.sender, "close: not the owner");
@@ -308,6 +320,11 @@ contract Kommodo {
                 );
             }
         }
+    }
+
+    function tickInterest(int24 tickBor, int24 tickCol, uint256 _liquidity, uint256 start) public view returns(uint256 amount){
+        uint24 ticks = uint24((tickBor - tickCol) / tickDelta);
+        amount = (block.timestamp - start) * interest * ticks * _liquidity / BASE_INTEREST;
     }
 }
 
