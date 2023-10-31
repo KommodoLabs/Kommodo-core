@@ -1,4 +1,5 @@
 require("@nomiclabs/hardhat-waffle");
+require('hardhat-contract-sizer');
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -7,9 +8,9 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1000,
+        runs: 500,
         details: { yul: false},
-      }
+      } 
     }
   },  
 };

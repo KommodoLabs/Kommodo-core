@@ -14,7 +14,7 @@ import './interfaces/INonfungiblePositionManager.sol';
 import './Positions.sol';
 
 /**
-* @dev Kommodo - loan pool                             
+* @dev Kommodo - permissionless lending protocol                            
 */
 contract Kommodo {
     using SafeCast for uint256;
@@ -38,7 +38,6 @@ contract Kommodo {
         uint128 liquidity;
         uint128 liquidityCol;
         uint128 interest;
-        uint128 fee;
         uint256 start;
     }
 
@@ -59,11 +58,12 @@ contract Kommodo {
     int24 public tickDelta;
     uint24 public poolFee; 
     
-    //Interest as minimal interest per second per tickdelta -> 10^12 value 
-    uint128 public BASE_FEE = 10000;
-    uint128 public BASE_INTEREST = 10e12;
+    uint128 constant BASE_FEE = 10000;
+    uint128 constant BASE_INTEREST = 10e12;
+    int256 constant BASE_MARGIN = 10000;
     uint128 public fee;
     uint128 public interest;
+    int256 public margin;
    
     uint256 private nextLiquidityId = 1;
     uint256 private nextCollateralId = 1;
@@ -74,17 +74,19 @@ contract Kommodo {
     mapping(int24 => mapping(uint256 => Borrower)) public borrower;
     mapping(int24 => mapping(address => Withdraw)) public withdraws;
 
-    function initialize(address _manager, address _factory, address _tokenA, address _tokenB, int24 _tickDelta, uint24 _poolFee, uint128 _fee, uint128 _interest) public {
+    constructor(address _manager, address _tokenA, address _tokenB, uint24 _poolFee, uint128 _fee, uint128 _interest, int256 _margin) {
         require(initialized == false, "initialize: already initialized");
         initialized = true;
-        IUniswapV3Factory factory = IUniswapV3Factory(_factory);
-        pool = IUniswapV3Pool(factory.getPool(_tokenA, _tokenB, _poolFee));
         manager = INonfungiblePositionManager(_manager);
+        IUniswapV3Factory factory = IUniswapV3Factory(manager.factory());
+        pool = IUniswapV3Pool(factory.getPool(_tokenA, _tokenB, _poolFee));
+        require(address(pool) != address(0), "initialize: no existing pool");
         tokenA = IERC20(_tokenA);
         tokenB = IERC20(_tokenB);
-        tickDelta = _tickDelta;
+        tickDelta = pool.tickSpacing();
         poolFee = _poolFee;
         fee = _fee;
+        margin = _margin;
         interest = _interest;
         liquidityNFT = new Positions("testLiquid", "TSTL");
         collateralNFT = new Positions("testBorrow", "TSTB");
@@ -146,7 +148,7 @@ contract Kommodo {
         require(tickLower != tickLowerCol, "open: false ticks");
         require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "open: insufficient funds available");
         //Check interest available
-        require(_interest != 0, "open: insufficient interest");
+        require(_interest > amount * fee / BASE_FEE, "open: insufficient interest");
         require(amount > 10000, "open: insufficient liquidity for startingfee");
         //Mint Collateral NFT
         uint256 id = nextCollateralId;
@@ -161,13 +163,14 @@ contract Kommodo {
         //Store collateral global and individual
         collateral[tickLowerCol].collateralId = _id;
         collateral[tickLowerCol].amount += _liquidity;         
-        borrower[tickLowerCol][id] = Borrower(tickLower, amount, _liquidity, _interest, amount * 10 / 10000,block.timestamp);    
-        //Add starting fee to interest
-        _interest += amount * 10 / BASE_FEE;
+        borrower[tickLowerCol][id] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp);    
         //Lock liquidity for loan 
         liquidity[tickLower].locked += amount - _interest;
         //Check requirement collateral >= borrow
+        
+        
         checkRequirement(tickLower, tickLowerCol, amount.toInt128(), _liquidity.toInt128());
+        
         //Withdraw liquidity from pool
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount - _interest, amountAMin, amountBMin);
         collectLiquidity(liquidity[tickLower].liquidityId, _amountA.toUint128(), _amountB.toUint128());  
@@ -180,7 +183,7 @@ contract Kommodo {
         //Calculate interest
         uint256 required = tickInterest(_tickLower, tickLowerCol, _liquidity, borrower[tickLowerCol][id].start);
         //Release locked liquidity
-        liquidity[_tickLower].locked -= _liquidity - borrower[tickLowerCol][id].interest - borrower[tickLowerCol][id].fee;   
+        liquidity[_tickLower].locked -= _liquidity - borrower[tickLowerCol][id].interest;   
         if (borrower[tickLowerCol][id].interest >= required) {
             //Only owner can close open position
             require(collateralNFT.ownerOf(id) == msg.sender, "close: not the owner");
@@ -263,7 +266,8 @@ contract Kommodo {
         manager.collect(paramsCollect);     
     }
 
-    function checkRequirement(int24 tickBor, int24 tickCol, int128 amountBor, int128 amountCol) internal view {
+    //View function
+    function checkRequirement(int24 tickBor, int24 tickCol, int128 amountBor, int128 amountCol) public view {
         int256 bor0 = SqrtPriceMath.getAmount0Delta(
                 TickMath.getSqrtRatioAtTick(tickBor),
                 TickMath.getSqrtRatioAtTick(tickBor + tickDelta),  
@@ -284,22 +288,20 @@ contract Kommodo {
                 TickMath.getSqrtRatioAtTick(tickCol + tickDelta),  
                 amountCol
         );
+        col0 = col0 * (margin + BASE_MARGIN) / BASE_MARGIN;
+        col1 = col0 * (margin + BASE_MARGIN) / BASE_MARGIN;
         require(bor0 <= col0 && bor1 <= col1, "checkRequirement: insufficient collateral for borrow");
     }
 
-    //View function
     function liquidityToAmounts(int24 tickCurrent, int24 tick, uint160 priceX96, int128 _liquidity) public view returns(int256 amount0, int256 amount1){
         if (_liquidity != 0) {
             if (tickCurrent < tick) {
-                // current tick is below the passed range; liquidity can only become in range by crossing from left to
-                // right, when we'll need _more_ token0 (it's becoming more valuable) so user must provide it
                 amount0 = SqrtPriceMath.getAmount0Delta(
                     TickMath.getSqrtRatioAtTick(tick),
                     TickMath.getSqrtRatioAtTick(tick + tickDelta),
                     _liquidity
                 );
             } else if (tickCurrent < tick + tickDelta) {
-                // current tick is inside the passed range
                 amount0 = SqrtPriceMath.getAmount0Delta(
                     priceX96,
                     TickMath.getSqrtRatioAtTick(tick + tickDelta),
@@ -311,8 +313,6 @@ contract Kommodo {
                     _liquidity
                 );
             } else {
-                // current tick is above the passed range; liquidity can only become in range by crossing from right to
-                // left, when we'll need _more_ token1 (it's becoming more valuable) so user must provide it
                 amount1 = SqrtPriceMath.getAmount1Delta(
                     TickMath.getSqrtRatioAtTick(tick),
                     TickMath.getSqrtRatioAtTick(tick + tickDelta),
@@ -324,7 +324,7 @@ contract Kommodo {
 
     function tickInterest(int24 tickBor, int24 tickCol, uint256 _liquidity, uint256 start) public view returns(uint256 amount){
         uint24 ticks = uint24((tickBor - tickCol) / tickDelta);
-        amount = (block.timestamp - start) * interest * ticks * _liquidity / BASE_INTEREST;
+        amount = (block.timestamp - start) * interest * ticks * _liquidity / BASE_INTEREST + _liquidity * fee / BASE_FEE;
     }
 }
 

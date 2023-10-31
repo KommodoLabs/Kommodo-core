@@ -116,11 +116,6 @@ describe("Kommodo_test", function () {
         provider
     )
     //Deploy kommodo
-    Kommodo = new ContractFactory(artifacts.Kommodo.abi, artifacts.Kommodo.bytecode, owner)
-    kommodo = await Kommodo.deploy()
-      //console.log('kommodo', kommodo.address)
-    //Initialize Kommodo
-    let spacing = await pool.tickSpacing()
     let tokenAdress0
     let tokenAdress1
     if(tokenA.address < weth.address) {a
@@ -130,7 +125,9 @@ describe("Kommodo_test", function () {
       tokenAdress0 = weth.address;
       tokenAdress1 = tokenA.address
     }
-    await kommodo.connect(signer2).initialize(nonfungiblePositionManager.address, factory.address, tokenAdress0, tokenAdress1, spacing, 500, 10, 1)
+    Kommodo = new ContractFactory(artifacts.Kommodo.abi, artifacts.Kommodo.bytecode, owner)
+    kommodo = await Kommodo.deploy(nonfungiblePositionManager.address, tokenAdress0, tokenAdress1, 500, 10, 1, 10)
+      //console.log('kommodo', kommodo.address)
     addressLNFT = await kommodo.connect(signer2).liquidityNFT()
     liquidityNFT = new Contract(
       addressLNFT,
@@ -264,22 +261,23 @@ describe("Kommodo_test", function () {
       expect(await tokenA.balanceOf(owner.address)).to.equal(amount.toString())
       expect(await weth.balanceOf(owner.address)).to.equal(amount.toString())
       //Call borrow
+      liquidity_ = 10000000000
       await kommodo.connect(owner).open(
         tickLower,                          //tick lower borrow
         slot0.tick + spacing,               //tick lower collateral
-        10000000000,                        //liquidity borrow
+        liquidity_,                         //liquidity borrow
         0,                                  //min amountA borrow
         0,                                  //min amountB borrow
         5003502,                            //amountA collateral
         0,                                  //amountB collateral
-        10000                               //interest deduction/deposit
+        liquidity_ / 1000 + 10              //interest deduction/deposit
       )
       //Check after borrow balance
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991000")).toString())
+      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Check locked 
       liquidity = await kommodo.liquidity(tickLower)
-      expect(liquidity.locked).to.equal("9989990000")
+      expect(liquidity.locked).to.equal("9989999990")
       //Check collateral stored
       collateral = await kommodo.collateral(slot0.tick + spacing)
       expect(collateral.collateralId).to.equal("2")
@@ -289,7 +287,7 @@ describe("Kommodo_test", function () {
       expect(borrower.tick).to.equal(tickLower)
       expect(borrower.liquidity).to.equal("10000000000")
       expect(borrower.liquidityCol).to.equal(collateral.amount)
-      expect(borrower.interest).to.equal("10000")
+      expect(borrower.interest).to.equal("10000010")
       expect(borrower.start).to.not.equal(0)
       //Check mint NFT
       expect(await collateralNFT.balanceOf(owner.address)).to.equal(1)
@@ -307,12 +305,12 @@ describe("Kommodo_test", function () {
       //Approve borrowed amount
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
       //Check after borrow balance
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991000")).toString())
+      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Call close
       await kommodo.connect(owner).close(slot0.tick + spacing, 1)
       //Check return balance (some interest payed) and minus 1 for rounding LP
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.minus("5002")).toString())
+      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
       //Check locked 
       liquidity = await kommodo.liquidity(tickLower)
@@ -367,27 +365,28 @@ describe("Kommodo_test", function () {
       await weth.connect(owner).deposit({value: amount.toString()})
       await tokenA.connect(owner).approve(kommodo.address, amount.toString())
 		  await weth.connect(owner).approve(kommodo.address, amount.toString())
+      liquidity_ = 10000000000
       gasBorrow = await kommodo.connect(owner).estimateGas.open(
         tickLower,                          //tick lower borrow
         slot0.tick + spacing,               //tick lower collateral
-        10000000000,                        //liquidity borrow
+        liquidity_,                         //liquidity borrow
         0,                                  //min amountA borrow
         0,                                  //min amountB borrow
         5003502,                            //amountA collateral
         0,                                  //amountB collateral
-        10                                  //interest deduction/deposit
+        liquidity_ / 1000 + 10              //interest deduction/deposit
       )
       console.log("Borrow: ", gasBorrow.toString());
       //Close estimate
       await kommodo.connect(owner).open(
         tickLower,                          //tick lower borrow
         slot0.tick + spacing,               //tick lower collateral
-        10000000000,                        //liquidity borrow
+        liquidity_,                         //liquidity borrow
         0,                                  //min amountA borrow
         0,                                  //min amountB borrow
         5003502,                            //amountA collateral
         0,                                  //amountB collateral
-        10                                   //interest deduction/deposit
+        liquidity_ / 1000 + 10              //interest deduction/deposit
       )
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
       gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, 2)
@@ -413,6 +412,8 @@ Test implementations:
   - FAIL WHEN NO WITHDRAW AVAILABLE
 - BORROW()
   - FAIL TICK OUTSIDE OF TICKMAX AND TICKMIN
+  - SUCCESS TICK MAX AND TICK MIN checkRequirement()
+  - FAIL INSUFFICIENT MARGIN 
 - CLOSE()
   - FAIL TICK OUTSIDE OF TICKMAX AND TICKMIN
   - SUCCESS INTEREST PAYMENT OWNER
@@ -421,15 +422,11 @@ Test implementations:
 
 
 TODO:
-  - ADJUST FEE IMPLEMENTATION (OPEN() = CHECK MINIMAL INTEREST BASED ON FEE, CLOSE() ONLY REDUCE BY INTEREST MINUS STARTING FEE)
-  - NO STORAGE OF FEE IN BORROW POSITIONS
+  - ADD FACTORY + GASANALYSES + SIZE ANALYSES DEPLOY NEW POOL
+  - ADD CHECK TOKEN0 AND TOKEN1 IN FACTORYE + CHECK POOL EXISTS!
+  - CLEANUP CODE + BREAK IN LIBRARY TO REDUCE CODE SIZE
 
-  - ADD FACTORY + GASANALYSES DEPLOY NEW POOL
-  - UNISWAPV3 LP FEE EFFECT?
-    - ONLY WITHDRAW AMOUNT SELECTED (NOT INTEREST STORED AS TOKENSOWED -> THEREFORE NO PROBLEM)
-    - ADD WITHDRAW & COLLECTION OF FEES FUNCTION (BEST FOR LP TO CALL BEFORE TAKE())?
-
-  - ADD TEST CASES FOR FAILS + CLEANUP CODE  
+  - ADD WITHDRAW & COLLECTION OF FEES FUNCTION (BEST FOR LP TO CALL BEFORE TAKE())?
   - ADD ARRAY OF LIQUIDITY (FOR FRONT END QUERYING)
 
   - START MINIMAL FRONT-END! 
