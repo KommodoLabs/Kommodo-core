@@ -9,8 +9,8 @@ const artifacts = {
     NonfungibleTokenPositionDescriptor: require("@uniswap/v3-periphery/artifacts/contracts/NonfungibleTokenPositionDescriptor.sol/NonfungibleTokenPositionDescriptor.json"),
     NonfungiblePositionManager: require("@uniswap/v3-periphery/artifacts/contracts/NonfungiblePositionManager.sol/NonfungiblePositionManager.json"),
     WETH9: require("../WETH9.json"),
+    KommodoFactory: require("../artifacts/contracts/KommodoFactory.sol/KommodoFactory.json"),
     Kommodo: require("../artifacts/contracts/Kommodo.sol/Kommodo.json"),
-    Positions: require("../artifacts/contracts/Positions.sol/Positions.json")
 };
 const UniswapV3Pool = require("@uniswap/v3-core/artifacts/contracts/UniswapV3Pool.sol/UniswapV3Pool.json")
 const { nearestUsableTick } = require('@uniswap/v3-sdk')
@@ -115,6 +115,10 @@ describe("Kommodo_test", function () {
         UniswapV3Pool.abi,
         provider
     )
+    //Deploy kommodo factory
+    KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
+    kommodoFactory = await KommodoFactory.deploy(nonfungiblePositionManager.address, 500, 10, 1, 10)
+      //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
     let tokenAdress0
     let tokenAdress1
@@ -125,23 +129,21 @@ describe("Kommodo_test", function () {
       tokenAdress0 = weth.address;
       tokenAdress1 = tokenA.address
     }
-    Kommodo = new ContractFactory(artifacts.Kommodo.abi, artifacts.Kommodo.bytecode, owner)
-    kommodo = await Kommodo.deploy(nonfungiblePositionManager.address, tokenAdress0, tokenAdress1, 500, 10, 1, 10)
+    await kommodoFactory.connect(owner).createKommodo(
+      tokenAdress0,
+      tokenAdress1,
+      {gasLimit: 5000000}
+    )
+    const kommodoAddress = await kommodoFactory.connect(owner).kommodo(
+      tokenAdress0,
+      tokenAdress1
+    )
+    kommodo = new Contract(
+        kommodoAddress,
+        artifacts.Kommodo.abi,
+        provider
+    )
       //console.log('kommodo', kommodo.address)
-    addressLNFT = await kommodo.connect(signer2).liquidityNFT()
-    liquidityNFT = new Contract(
-      addressLNFT,
-      artifacts.Positions.abi,
-      provider
-    )
-      //console.log('liquidityNFT', addressLNFT)
-    addressCNFT = await kommodo.connect(signer2).collateralNFT()
-    collateralNFT = new Contract(
-      addressCNFT,
-      artifacts.Positions.abi,
-      provider
-    )
-      //console.log('collateralNFT', addressCNFT)
 	})
   describe("Kommodo_test", function () {
     it('Should provide liquidity to pool', async function () {
@@ -165,9 +167,6 @@ describe("Kommodo_test", function () {
       //Check deposit success
       expect(await tokenA.balanceOf(signer2.address)).to.equal(0)
       expect(await weth.balanceOf(signer2.address)).to.equal(0)
-      //Check mint NFT
-      expect(await liquidityNFT.balanceOf(signer2.address)).to.equal(1)
-      expect(await liquidityNFT.ownerOf(1)).to.equal(signer2.address)
       //Check stored global position data 
       let liquidity = await kommodo.connect(signer2).liquidity(tickLower)
       expect(liquidity.liquidityId).to.equal(1)
@@ -176,38 +175,38 @@ describe("Kommodo_test", function () {
       expect(liquidity.locked).to.equal(0)
       expect(liquidity.shares).to.equal(liquidity.liquidity)
       //Check stored individual position share
-      expect(await kommodo.connect(signer2).lender(tickLower, 1)).to.equal(liquidity.liquidity)
-    })
+      expect(await kommodo.connect(signer2).lender(tickLower, signer2.address)).to.equal(liquidity.liquidity)
+    })   
     it('Should take liquidity from pool', async function () {
       const [owner, signer2] = await ethers.getSigners();
       //Get take() required data
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      let share = (await kommodo.connect(signer2).lender(tickLower, 1)).div(2)
+      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
       //Check withdraw amounts zero before take
-      let withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)      
+      let withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)      
       expect(withdraw.amountA).to.equal(0)
       expect(withdraw.amountB).to.equal(0)
       expect(withdraw.timestamp).to.equal(0)
       //Call take
-      await kommodo.connect(signer2).take(tickLower, 1, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      await kommodo.connect(signer2).take(tickLower, signer2.address, share, 0, 0, { gasLimit: '1000000' })
       //Check stored global position data 
       let liquidity = await kommodo.connect(signer2).liquidity(tickLower)
       expect(liquidity.liquidityId).to.equal(1)
       expect(liquidity.liquidity).to.equal(share.toString())
       expect(liquidity.shares).to.equal(share.toString())
       //Check new user share
-      expect(await kommodo.connect(signer2).lender(tickLower, 1)).to.equal(share.toString())
+      expect(await kommodo.connect(signer2).lender(tickLower, signer2.address)).to.equal(share.toString())
       //Check stored withdraw
-      withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)      
+      withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)      
       if (withdraw.amountA == 0) {
         expect(withdraw.amountB).to.not.equal(0)
       } else {
         expect(withdraw.amountA).to.not.equal(0)
       }
       expect(withdraw.timestamp).to.not.equal(0)
-    })
+    })   
     it('Should withdraw from pool', async function () {
       const [owner, signer2] = await ethers.getSigners();  
       //Get amount
@@ -218,7 +217,7 @@ describe("Kommodo_test", function () {
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
       //Check withdraw exists
-      withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)
+      withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)
       if (withdraw.amountA == 0) {
         expect(withdraw.amountB).to.not.equal(0)
       } else {
@@ -283,16 +282,13 @@ describe("Kommodo_test", function () {
       expect(collateral.collateralId).to.equal("2")
       expect(collateral.amount).to.equal("10015012305")
       //Check borrow stored
-      borrower = await kommodo.borrower(slot0.tick + spacing, 1)
+      borrower = await kommodo.borrower(slot0.tick + spacing, owner.address)     
       expect(borrower.tick).to.equal(tickLower)
       expect(borrower.liquidity).to.equal("10000000000")
       expect(borrower.liquidityCol).to.equal(collateral.amount)
       expect(borrower.interest).to.equal("10000010")
       expect(borrower.start).to.not.equal(0)
-      //Check mint NFT
-      expect(await collateralNFT.balanceOf(owner.address)).to.equal(1)
-      expect(await collateralNFT.ownerOf(1)).to.equal(owner.address)
-    })
+    })    
     it('Should close borrow from pool', async function () {
       const [owner, signer2] = await ethers.getSigners();
       //Get amount
@@ -308,7 +304,7 @@ describe("Kommodo_test", function () {
       expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Call close
-      await kommodo.connect(owner).close(slot0.tick + spacing, 1)
+      await kommodo.connect(owner).close(slot0.tick + spacing, owner.address)
       //Check return balance (some interest payed) and minus 1 for rounding LP
       expect(await tokenA.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
       expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
@@ -320,26 +316,42 @@ describe("Kommodo_test", function () {
       expect(collateral.collateralId).to.equal("2")
       expect(collateral.amount).to.equal(0)
       //Check borrow stored
-      borrower = await kommodo.borrower(slot0.tick + spacing, 1)
+      borrower = await kommodo.borrower(slot0.tick + spacing, owner.address)
       expect(borrower.tick).to.equal(0)
       expect(borrower.liquidity).to.equal(0)
       expect(borrower.liquidityCol).to.equal(0)
       expect(borrower.interest).to.equal(0)
       expect(borrower.start).to.equal(0)
-      //Check burn NFT
-      expect(await collateralNFT.balanceOf(owner.address)).to.equal(0)
-      await expect(collateralNFT.ownerOf(1)).to.be.revertedWith("ERC721: owner query for nonexistent token")
     })
   })
   describe("Kommodo_gas", function () {
-    it('Kommodo gas analyses', async function () {
-      //Provide estimate
+    it('Kommodo gas analyses', async function () {    
       const [owner, signer2] = await ethers.getSigners()
       let base = new bn(10)
       let amount = base.pow("18")
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
+      //Create estimate
+      sqrtPrice = encodePriceSqrt(1,1)
+      tokenB = await Tokens.deploy()
+      if(tokenA.address < weth.address) {a
+        tokenAdress0 = tokenB.address;
+        tokenAdress1 = weth.address
+      } else {
+        tokenAdress0 = weth.address;
+        tokenAdress1 = tokenB.address
+      }
+      await nonfungiblePositionManager.connect(owner).createAndInitializePoolIfNecessary(
+          tokenAdress0,
+          tokenAdress1,
+          500,
+          sqrtPrice,
+          {gasLimit: 5000000}
+      )
+      gasCreate = await kommodoFactory.connect(owner).estimateGas.createKommodo(tokenAdress0, tokenAdress1, {gasLimit: 5000000})
+      console.log("Create: ", gasCreate.toString());
+      //Provide estimate
       await tokenA.connect(signer2).mint(amount.toString())
       await weth.connect(signer2).deposit({value: amount.toString()})
       await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
@@ -347,9 +359,8 @@ describe("Kommodo_test", function () {
       gasProvide = await kommodo.connect(signer2).estimateGas.provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
       console.log("Povide: ", gasProvide.toString());
       //Take estimate
-      let share = (await kommodo.connect(signer2).lender(tickLower, 1)).div(2)
-      let withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)      
-      gasTake = await kommodo.connect(signer2).estimateGas.take(tickLower, 1, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
+      gasTake = await kommodo.connect(signer2).estimateGas.take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
       console.log("Take: ", gasTake.toString());
       //Withdraw estimate
       await tokenA.connect(signer2).mint(amount.toString())
@@ -357,9 +368,16 @@ describe("Kommodo_test", function () {
       await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
 		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
       await kommodo.connect(signer2).provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
-      await kommodo.connect(signer2).take(tickLower, 1, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      await kommodo.connect(signer2).take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
       gasWithdraw = await kommodo.connect(signer2).estimateGas.withdraw(tickLower)
       console.log("Withdraw: ", gasWithdraw.toString());
+    
+      /* Currently fails because amount = 0
+      //Collect estimate
+      gasCollect = await kommodo.connect(signer2).estimateGas.collect(tickLower)
+      console.log("Collect: ", gasCollect.toString());      
+      */
+
       //Borrow estimate
       await tokenA.connect(owner).mint(amount.toString())
       await weth.connect(owner).deposit({value: amount.toString()})
@@ -389,7 +407,7 @@ describe("Kommodo_test", function () {
         liquidity_ / 1000 + 10              //interest deduction/deposit
       )
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
-      gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, 2)
+      gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, owner.address)
       console.log("Close: ", gasClose.toString());
     })
   })
@@ -419,16 +437,21 @@ Test implementations:
   - SUCCESS INTEREST PAYMENT OWNER
   - SUCCESS CLOSE AFTER INTEREST BY NON OWNER
 
+- EXTRA
+  - SUCCES STORE AND REMOVE AVAILABLE LIQUIDITY (FRONT-END)
+
 
 
 TODO:
-  - ADD FACTORY + GASANALYSES + SIZE ANALYSES DEPLOY NEW POOL
-  - ADD CHECK TOKEN0 AND TOKEN1 IN FACTORYE + CHECK POOL EXISTS!
-  - CLEANUP CODE + BREAK IN LIBRARY TO REDUCE CODE SIZE
 
-  - ADD WITHDRAW & COLLECTION OF FEES FUNCTION (BEST FOR LP TO CALL BEFORE TAKE())?
-  - ADD ARRAY OF LIQUIDITY (FOR FRONT END QUERYING)
-
+BEFORE ROUND
+  - ADD RETURN FUNCTION ARRAY OF AVAILABLE LIQUIDITY
+  - ADD INTEREST TO POOL TO TEST COLLECT()
+  - CLEANUP CODE
+ 
+AFTER ROUND
+  - ADD EXTERNAL NFT CONTRACTS FOR MINTING NFTS
+  - EXTRA TESTS + CHECKS
   - START MINIMAL FRONT-END! 
 */
 

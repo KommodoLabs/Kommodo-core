@@ -8,7 +8,7 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 500,
+        runs: 1000,
         details: { yul: false},
       } 
     }
