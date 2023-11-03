@@ -114,6 +114,7 @@ contract Kommodo {
 
     function take(int24 tickLower, address receiver, uint128 share, uint128 amountMin0, uint128 amountMin1) public {                  
         uint128 amount = liquidity[tickLower].liquidity / liquidity[tickLower].shares * share;
+        require(amount > 0, "take: zero liquidity");
         require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "take: insufficient liquidity");
         //Adjust global position  
         liquidity[tickLower].liquidity -= amount;  

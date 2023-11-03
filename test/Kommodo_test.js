@@ -115,6 +115,10 @@ describe("Kommodo_test", function () {
         UniswapV3Pool.abi,
         provider
     )
+    //Deploy mock router
+    MockRouter = await ethers.getContractFactory('Router', owner)
+    mockRouter = await MockRouter.deploy()
+      //console.log('mockRouter', mockRouter.address)
     //Deploy kommodo factory
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
     kommodoFactory = await KommodoFactory.deploy(nonfungiblePositionManager.address, 500, 10, 1, 10)
@@ -323,138 +327,55 @@ describe("Kommodo_test", function () {
       expect(borrower.interest).to.equal(0)
       expect(borrower.start).to.equal(0)
     })
-  })
-  describe("Kommodo_gas", function () {
-    it('Kommodo gas analyses', async function () {    
-      const [owner, signer2] = await ethers.getSigners()
+    it('Kommodo tests after swaps', async function () {
+      const [owner, signer2] = await ethers.getSigners();
+      //Get amount
       let base = new bn(10)
-      let amount = base.pow("18")
-      let slot0 = await pool.slot0()
+      let amount = base.pow("18").multipliedBy("3")
+      //Get data provide
+      sqrtPrice = encodePriceSqrt(1,2)
+      slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
-      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      //Create estimate
-      sqrtPrice = encodePriceSqrt(1,1)
-      tokenB = await Tokens.deploy()
+      //deposit liquidity @slot0.tick
+      await tokenA.connect(signer2).mint(amount.toString())
+      await weth.connect(signer2).deposit({value: amount.toString()})
+      await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
+		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
+      await kommodo.connect(signer2).provide(slot0.tick - spacing * 2, amount.div("3").toString(), amount.div("3").toString(), { gasLimit: '1000000' })
+      //check before price and tick
+      tick = await pool.connect(signer2).ticks(slot0.tick - spacing * 2)
+        //console.log(slot0)
+        //console.log(tick)
+      //deposit funds for swap in tick
+      await tokenA.connect(signer2).transfer(mockRouter.address, amount.div("3").toString())
+      await weth.connect(signer2).transfer(mockRouter.address, amount.div("3").toString())
+      //initialize mock router
+      let tokenAdress0
+      let tokenAdress1
       if(tokenA.address < weth.address) {a
-        tokenAdress0 = tokenB.address;
+        tokenAdress0 = tokenA.address;
         tokenAdress1 = weth.address
       } else {
         tokenAdress0 = weth.address;
-        tokenAdress1 = tokenB.address
+        tokenAdress1 = tokenA.address
       }
-      await nonfungiblePositionManager.connect(owner).createAndInitializePoolIfNecessary(
-          tokenAdress0,
-          tokenAdress1,
-          500,
-          sqrtPrice,
-          {gasLimit: 5000000}
-      )
-      gasCreate = await kommodoFactory.connect(owner).estimateGas.createKommodo(tokenAdress0, tokenAdress1, {gasLimit: 5000000})
-      console.log("Create: ", gasCreate.toString());
-      //Provide estimate
-      await tokenA.connect(signer2).mint(amount.toString())
-      await weth.connect(signer2).deposit({value: amount.toString()})
-      await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
-		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-      gasProvide = await kommodo.connect(signer2).estimateGas.provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
-      console.log("Povide: ", gasProvide.toString());
-      //Take estimate
-      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
-      gasTake = await kommodo.connect(signer2).estimateGas.take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
-      console.log("Take: ", gasTake.toString());
-      //Withdraw estimate
-      await tokenA.connect(signer2).mint(amount.toString())
-      await weth.connect(signer2).deposit({value: amount.toString()})
-      await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
-		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-      await kommodo.connect(signer2).provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
-      await kommodo.connect(signer2).take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
-      gasWithdraw = await kommodo.connect(signer2).estimateGas.withdraw(tickLower)
-      console.log("Withdraw: ", gasWithdraw.toString());
-    
-      /* Currently fails because amount = 0
-      //Collect estimate
-      gasCollect = await kommodo.connect(signer2).estimateGas.collect(tickLower)
-      console.log("Collect: ", gasCollect.toString());      
-      */
-
-      //Borrow estimate
-      await tokenA.connect(owner).mint(amount.toString())
-      await weth.connect(owner).deposit({value: amount.toString()})
-      await tokenA.connect(owner).approve(kommodo.address, amount.toString())
-		  await weth.connect(owner).approve(kommodo.address, amount.toString())
-      liquidity_ = 10000000000
-      gasBorrow = await kommodo.connect(owner).estimateGas.open(
-        tickLower,                          //tick lower borrow
-        slot0.tick + spacing,               //tick lower collateral
-        liquidity_,                         //liquidity borrow
-        0,                                  //min amountA borrow
-        0,                                  //min amountB borrow
-        5003502,                            //amountA collateral
-        0,                                  //amountB collateral
-        liquidity_ / 1000 + 10              //interest deduction/deposit
-      )
-      console.log("Borrow: ", gasBorrow.toString());
-      //Close estimate
-      await kommodo.connect(owner).open(
-        tickLower,                          //tick lower borrow
-        slot0.tick + spacing,               //tick lower collateral
-        liquidity_,                         //liquidity borrow
-        0,                                  //min amountA borrow
-        0,                                  //min amountB borrow
-        5003502,                            //amountA collateral
-        0,                                  //amountB collateral
-        liquidity_ / 1000 + 10              //interest deduction/deposit
-      )
-      await tokenA.connect(owner).approve(kommodo.address, "4996002")
-      gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, owner.address)
-      console.log("Close: ", gasClose.toString());
+      await mockRouter.connect(signer2).initialize(pool.address, tokenAdress0, tokenAdress1)
+      //call swap from router
+      await mockRouter.connect(signer2).swap(signer2.address, true, 100000000000, sqrtPrice, "0x")
+      position = await nonfungiblePositionManager.positions(1)
+        //console.log(position)
+      //Update positions
+      await kommodo.connect(signer2).provide(-20, amount.div("3").toString(), amount.div("3").toString(), { gasLimit: '1000000' })
+      //Check position update
+      position = await nonfungiblePositionManager.positions(1)
+        //console.log(position)
+      //check new price and tick
+      slot0 = await pool.slot0()
+      tick = await pool.connect(signer2).ticks(slot0.tick - spacing * 2)
+        //console.log(slot0)  
+        //console.log(tick)
     })
-  })
+  }) 
 })
-
-
-/*
-Test implementations:
-
-- PROVIDE()
-  - FAIL WHEN PROVIDE SHARE == 0
-  - SHARE CHANGE AFTER INTEREST DEPOSIT
-- TAKE()
-  - FAIL TAKE() WHEN NOT OWNER
-  - FAIL TAKE() NO POOL LIQUIDITY
-  - FAIL TAKE() INSUFFICIENT USER SHARES
-  - FAIL TAKE() INSUFFICIENT USER LIQ
-- WITHDRAW()
-  - FAIL WITHDRAW BEFORE DELAY
-  - FAIL WHEN NO WITHDRAW AVAILABLE
-- BORROW()
-  - FAIL TICK OUTSIDE OF TICKMAX AND TICKMIN
-  - SUCCESS TICK MAX AND TICK MIN checkRequirement()
-  - FAIL INSUFFICIENT MARGIN 
-- CLOSE()
-  - FAIL TICK OUTSIDE OF TICKMAX AND TICKMIN
-  - SUCCESS INTEREST PAYMENT OWNER
-  - SUCCESS CLOSE AFTER INTEREST BY NON OWNER
-
-- EXTRA
-  - SUCCES STORE AND REMOVE AVAILABLE LIQUIDITY (FRONT-END)
-
-
-
-TODO:
-
-BEFORE ROUND
-  - ADD RETURN FUNCTION ARRAY OF AVAILABLE LIQUIDITY
-  - ADD INTEREST TO POOL TO TEST COLLECT()
-  - CLEANUP CODE
- 
-AFTER ROUND
-  - ADD EXTERNAL NFT CONTRACTS FOR MINTING NFTS
-  - EXTRA TESTS + CHECKS
-  - START MINIMAL FRONT-END! 
-*/
-
-
 
 
