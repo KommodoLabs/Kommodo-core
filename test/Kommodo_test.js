@@ -8,7 +8,7 @@ const artifacts = {
     NFTDescriptor: require("@uniswap/v3-periphery/artifacts/contracts/libraries/NFTDescriptor.sol/NFTDescriptor.json"),
     NonfungibleTokenPositionDescriptor: require("@uniswap/v3-periphery/artifacts/contracts/NonfungibleTokenPositionDescriptor.sol/NonfungibleTokenPositionDescriptor.json"),
     NonfungiblePositionManager: require("@uniswap/v3-periphery/artifacts/contracts/NonfungiblePositionManager.sol/NonfungiblePositionManager.json"),
-    WETH9: require("../WETH9.json"),
+    WETH9: require("./WETH9.json"),
     KommodoFactory: require("../artifacts/contracts/KommodoFactory.sol/KommodoFactory.json"),
     Kommodo: require("../artifacts/contracts/Kommodo.sol/Kommodo.json"),
 };

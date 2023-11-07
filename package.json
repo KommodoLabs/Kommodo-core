@@ -1,13 +1,13 @@
 {
-  "name": "Kommodo",
-  "version": "1.0.0",
-  "description": "",
+  "name": "Kommodo-core",
+  "version": "0.1.0",
+  "description": "Kommodo core smart contracts",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "test": "hardhat test"
   },
-  "author": "",
-  "license": "ISC",
+  "license": "GPLv3",
   "dependencies": {
     "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@nomiclabs/hardhat-waffle": "^2.0.6",
