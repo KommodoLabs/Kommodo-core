@@ -2,14 +2,14 @@
 pragma solidity =0.8.19;
 
 import './interfaces/INonfungiblePositionManager.sol';
-
 import './Kommodo.sol';
 
 contract KommodoFactory {
-    //AMMs variables
+    //AMM variables
     address public manager;
     uint24 public poolFee;
     uint128 public fee;
+    
     //Lending pool variables
     uint128 public interest;
     int256 public margin;
@@ -18,6 +18,7 @@ contract KommodoFactory {
     address[] public allKommodo;
     
     constructor(address _manager, uint24 _poolFee, uint128 _fee, uint128 _interest, int256 _margin) {
+        require(_margin > 0, "false margin");
         manager = _manager;
         poolFee = _poolFee;
         fee = _fee;
