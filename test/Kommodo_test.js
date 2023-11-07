@@ -96,11 +96,20 @@ describe("Kommodo_test", function () {
       //console.log('nonfungibleTokenPositionDescriptor', nonfungibleTokenPositionDescriptor.address)
     NonfungiblePositionManager = new ContractFactory(artifacts.NonfungiblePositionManager.abi, artifacts.NonfungiblePositionManager.bytecode, owner)
     nonfungiblePositionManager = await NonfungiblePositionManager.deploy(factory.address, weth.address, nonfungibleTokenPositionDescriptor.address)
-      //console.log('nonfungiblePositionManager', nonfungiblePositionManager.address)
+      //console.log('nonfungiblePositionManager', nonfungiblePositionManager.address)      
     const sqrtPrice = encodePriceSqrt(1,1)
+    let tokenAdress0
+    let tokenAdress1
+    if(tokenA.address < weth.address) {
+      tokenAdress0 = tokenA.address;
+      tokenAdress1 = weth.address
+    } else {
+      tokenAdress0 = weth.address;
+      tokenAdress1 = tokenA.address
+    }
     await nonfungiblePositionManager.connect(owner).createAndInitializePoolIfNecessary(
-        weth.address,
-        tokenA.address,
+        tokenAdress0,
+        tokenAdress1,
         500,
         sqrtPrice,
         {gasLimit: 5000000}
@@ -118,21 +127,12 @@ describe("Kommodo_test", function () {
     //Deploy mock router
     MockRouter = await ethers.getContractFactory('Router', owner)
     mockRouter = await MockRouter.deploy()
-      //console.log('mockRouter', mockRouter.address)
+      //console.log('mockRouter', mockRouter.address)      
     //Deploy kommodo factory
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
     kommodoFactory = await KommodoFactory.deploy(nonfungiblePositionManager.address, 500, 10, 1, 10)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
-    let tokenAdress0
-    let tokenAdress1
-    if(tokenA.address < weth.address) {a
-      tokenAdress0 = tokenA.address;
-      tokenAdress1 = weth.address
-    } else {
-      tokenAdress0 = weth.address;
-      tokenAdress1 = tokenA.address
-    }
     await kommodoFactory.connect(owner).createKommodo(
       tokenAdress0,
       tokenAdress1,
@@ -149,7 +149,7 @@ describe("Kommodo_test", function () {
     )
       //console.log('kommodo', kommodo.address)
 	})
-  describe("Kommodo_test", function () {
+  describe("Kommodo_test", function () {    
     it('Should provide liquidity to pool', async function () {
       const [owner, signer2] = await ethers.getSigners();
       //Get amount
@@ -255,14 +255,24 @@ describe("Kommodo_test", function () {
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
+      //Sort tokens
+      let token0
+      let token1
+      if(tokenA.address < weth.address) {
+        token0 = tokenA
+        token1 = weth
+      } else {
+        token0 = weth;
+        token1 = tokenA
+      }
       //Mint collateral funds  
       await tokenA.connect(owner).mint(amount.toString())
       await weth.connect(owner).deposit({value: amount.toString()})
       await tokenA.connect(owner).approve(kommodo.address, amount.toString())
 		  await weth.connect(owner).approve(kommodo.address, amount.toString())
       //Check start balance 
-      expect(await tokenA.balanceOf(owner.address)).to.equal(amount.toString())
-      expect(await weth.balanceOf(owner.address)).to.equal(amount.toString())
+      expect(await token0.balanceOf(owner.address)).to.equal(amount.toString())
+      expect(await token1.balanceOf(owner.address)).to.equal(amount.toString())
       //Call borrow
       liquidity_ = 10000000000
       await kommodo.connect(owner).open(
@@ -276,8 +286,8 @@ describe("Kommodo_test", function () {
         liquidity_ / 1000 + 10              //interest deduction/deposit
       )
       //Check after borrow balance
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
-      expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
+      expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
+      expect(await token1.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
       //Check locked 
       liquidity = await kommodo.liquidity(tickLower)
       expect(liquidity.locked).to.equal("9989999990")
@@ -292,7 +302,7 @@ describe("Kommodo_test", function () {
       expect(borrower.liquidityCol).to.equal(collateral.amount)
       expect(borrower.interest).to.equal("10000010")
       expect(borrower.start).to.not.equal(0)
-    })    
+    }) 
     it('Should close borrow from pool', async function () {
       const [owner, signer2] = await ethers.getSigners();
       //Get amount
@@ -302,16 +312,26 @@ describe("Kommodo_test", function () {
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
+      //Sort tokens
+      let token0
+      let token1
+      if(tokenA.address < weth.address) {
+        token0 = tokenA
+        token1 = weth
+      } else {
+        token0 = weth;
+        token1 = tokenA
+      }
       //Approve borrowed amount
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
       //Check after borrow balance
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
-      expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
+      expect(await token1.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
+      expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Call close
       await kommodo.connect(owner).close(slot0.tick + spacing, owner.address)
       //Check return balance (some interest payed) and minus 1 for rounding LP
-      expect(await tokenA.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
-      expect(await weth.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
+      expect(await token1.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
+      expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
       //Check locked 
       liquidity = await kommodo.liquidity(tickLower)
       expect(liquidity.locked).to.equal(0)
@@ -333,7 +353,6 @@ describe("Kommodo_test", function () {
       let base = new bn(10)
       let amount = base.pow("18").multipliedBy("3")
       //Get data provide
-      sqrtPrice = encodePriceSqrt(1,2)
       slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       //deposit liquidity @slot0.tick
@@ -341,31 +360,39 @@ describe("Kommodo_test", function () {
       await weth.connect(signer2).deposit({value: amount.toString()})
       await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
 		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-      await kommodo.connect(signer2).provide(slot0.tick - spacing * 2, amount.div("3").toString(), amount.div("3").toString(), { gasLimit: '1000000' })
+      await kommodo.connect(signer2).provide(slot0.tick - spacing * 2, amount.div("2").toString(), amount.div("2").toString(), { gasLimit: '1000000' })
       //check before price and tick
       tick = await pool.connect(signer2).ticks(slot0.tick - spacing * 2)
         //console.log(slot0)
         //console.log(tick)
       //deposit funds for swap in tick
-      await tokenA.connect(signer2).transfer(mockRouter.address, amount.div("3").toString())
-      await weth.connect(signer2).transfer(mockRouter.address, amount.div("3").toString())
+      await tokenA.connect(signer2).mint(amount.toString())
+      await weth.connect(signer2).deposit({value: amount.toString()})
+      await tokenA.connect(signer2).transfer(mockRouter.address, amount.toString())
+      await weth.connect(signer2).transfer(mockRouter.address, amount.toString())
       //initialize mock router
       let tokenAdress0
       let tokenAdress1
-      if(tokenA.address < weth.address) {a
+      let sqrtPrice
+      let zeroOne
+      if(tokenA.address < weth.address) {
         tokenAdress0 = tokenA.address;
         tokenAdress1 = weth.address
+        sqrtPrice = encodePriceSqrt(2,1)
+        zeroOne = false
       } else {
         tokenAdress0 = weth.address;
         tokenAdress1 = tokenA.address
+        sqrtPrice = encodePriceSqrt(1,2)
+        zeroOne = true
       }
-      await mockRouter.connect(signer2).initialize(pool.address, tokenAdress0, tokenAdress1)
+      await mockRouter.connect(signer2).initialize(pool.address, tokenAdress0, tokenAdress1) 
       //call swap from router
-      await mockRouter.connect(signer2).swap(signer2.address, true, 100000000000, sqrtPrice, "0x")
+      await mockRouter.connect(signer2).swap(signer2.address, zeroOne, 100000000000, sqrtPrice, "0x")
       position = await nonfungiblePositionManager.positions(1)
-        //console.log(position)
+        //console.log(position)          
       //Update positions
-      await kommodo.connect(signer2).provide(-20, amount.div("3").toString(), amount.div("3").toString(), { gasLimit: '1000000' })
+      await kommodo.connect(signer2).provide(-20, amount.div("2").toString(), amount.div("2").toString(), { gasLimit: '1000000' })
       //Check position update
       position = await nonfungiblePositionManager.positions(1)
         //console.log(position)

@@ -16,11 +16,12 @@ contract Router {
         tokenB = _tokenB;
     }
 
-    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata _data) public {
+    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata _data) public returns(bytes calldata){
         //add payment logic
         uint256 amountToPay = amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta);
         address tokenPay = amount0Delta > 0 ? tokenA : tokenB;
         TransferHelper.safeTransferFrom(tokenPay, address(this), pool, uint256(amountToPay)); 
+        return(_data);
     }
 
     function swap(address recipient, bool zeroForOne, int256 amountSpecified, uint160 sqrtPriceLimitX96, bytes calldata data) public {

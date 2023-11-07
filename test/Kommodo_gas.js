@@ -90,17 +90,26 @@ describe("Kommodo_gas", function () {
         {
             NFTDescriptor: nftDescriptor.address,
         }
-    );
+    ); 
     NonfungibleTokenPositionDescriptor = new ContractFactory(artifacts.NonfungibleTokenPositionDescriptor.abi, linkedBytecode, owner)
     nonfungibleTokenPositionDescriptor = await NonfungibleTokenPositionDescriptor.deploy(weth.address)
       //console.log('nonfungibleTokenPositionDescriptor', nonfungibleTokenPositionDescriptor.address)
     NonfungiblePositionManager = new ContractFactory(artifacts.NonfungiblePositionManager.abi, artifacts.NonfungiblePositionManager.bytecode, owner)
     nonfungiblePositionManager = await NonfungiblePositionManager.deploy(factory.address, weth.address, nonfungibleTokenPositionDescriptor.address)
-      //console.log('nonfungiblePositionManager', nonfungiblePositionManager.address)
+      //console.log('nonfungiblePositionManager', nonfungiblePositionManager.address)      
     const sqrtPrice = encodePriceSqrt(1,1)
+    let tokenAdress0
+    let tokenAdress1
+    if(tokenA.address < weth.address) {
+      tokenAdress0 = tokenA.address;
+      tokenAdress1 = weth.address
+    } else {
+      tokenAdress0 = weth.address;
+      tokenAdress1 = tokenA.address
+    }
     await nonfungiblePositionManager.connect(owner).createAndInitializePoolIfNecessary(
-        weth.address,
-        tokenA.address,
+        tokenAdress0,
+        tokenAdress1,
         500,
         sqrtPrice,
         {gasLimit: 5000000}
@@ -118,21 +127,12 @@ describe("Kommodo_gas", function () {
     //Deploy mock router
     MockRouter = await ethers.getContractFactory('Router', owner)
     mockRouter = await MockRouter.deploy()
-      //console.log('mockRouter', mockRouter.address)
+      //console.log('mockRouter', mockRouter.address)      
     //Deploy kommodo factory
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
     kommodoFactory = await KommodoFactory.deploy(nonfungiblePositionManager.address, 500, 10, 1, 10)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
-    let tokenAdress0
-    let tokenAdress1
-    if(tokenA.address < weth.address) {a
-      tokenAdress0 = tokenA.address;
-      tokenAdress1 = weth.address
-    } else {
-      tokenAdress0 = weth.address;
-      tokenAdress1 = tokenA.address
-    }
     await kommodoFactory.connect(owner).createKommodo(
       tokenAdress0,
       tokenAdress1,
@@ -230,6 +230,7 @@ describe("Kommodo_gas", function () {
         0,                                  //amountB collateral
         liquidity_ / 1000 + 10              //interest deduction/deposit
       )
+      await kommodo.connect(owner).close(slot0.tick + spacing, owner.address)
       gasBorrow = await kommodo.connect(owner).estimateGas.open(
         tickLower,                          //tick lower borrow
         slot0.tick + spacing,               //tick lower collateral
@@ -241,12 +242,21 @@ describe("Kommodo_gas", function () {
         liquidity_ / 1000 + 10              //interest deduction/deposit
       )
       console.log("Borrow add AMM: ", gasBorrow.toString());
+      await kommodo.connect(owner).open(
+        tickLower,                          //tick lower borrow
+        slot0.tick + spacing,               //tick lower collateral
+        liquidity_,                         //liquidity borrow
+        0,                                  //min amountA borrow
+        0,                                  //min amountB borrow
+        5003502,                            //amountA collateral
+        0,                                  //amountB collateral
+        liquidity_ / 1000 + 10              //interest deduction/deposit
+      )
       //Close estimate
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
       gasClose = await kommodo.connect(owner).estimateGas.close(slot0.tick + spacing, owner.address)
       console.log("Close: ", gasClose.toString());
     })
-    
   })
 })
 

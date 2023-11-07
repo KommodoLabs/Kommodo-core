@@ -26,6 +26,8 @@ contract Kommodo {
         uint128 liquidity;
         uint128 locked;
         uint128 shares;
+        uint256 fee0;
+        uint256 fee1;
     } 
 
     struct Collateral { 
@@ -62,8 +64,8 @@ contract Kommodo {
     uint128 public fee;
     uint128 public interest;
     int256 public margin;
-
-    uint256[887272 * 2] public availableLiquidity;
+    //Length is total tickspace 
+    uint256[1774544] public availableLiquidity;
 
     mapping(int24 => Liquidity) public liquidity;
     mapping(int24 => Collateral) public collateral;
@@ -93,7 +95,6 @@ contract Kommodo {
     // Lend functions
     function provide(int24 tickLower, uint128 amountA, uint128 amountB) public {
         //Transfer funds and approve manager
-        //Notice no safety checks for minimal implementation - checks in calling contract 
         TransferHelper.safeTransferFrom(tokenA, msg.sender, address(this), amountA); 
         TransferHelper.safeApprove(tokenA, manager, amountA); 
         TransferHelper.safeTransferFrom(tokenB, msg.sender, address(this), amountB); 
@@ -107,12 +108,13 @@ contract Kommodo {
         //Store global liquidity data
         liquidity[tickLower].liquidityId = _id;
         liquidity[tickLower].liquidity += _liquidity; 
-        liquidity[tickLower].shares = share;
+        liquidity[tickLower].shares += share;
         //Store available liquidity
         availableLiquidity[uint24(tickLower + 887272)] += _liquidity;     
     }
 
     function take(int24 tickLower, address receiver, uint128 share, uint128 amountMin0, uint128 amountMin1) public {                  
+        //Shares to liquidity
         uint128 amount = liquidity[tickLower].liquidity / liquidity[tickLower].shares * share;
         require(amount > 0, "take: zero liquidity");
         require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "take: insufficient liquidity");
@@ -128,9 +130,9 @@ contract Kommodo {
         //Collect withdraw amounts
         collectLiquidity(liquidity[tickLower].liquidityId, amountA.toUint128(), amountB.toUint128(), address(this));  
         //Store withdraw 
+        withdraws[tickLower][receiver].timestamp = block.timestamp;
         withdraws[tickLower][receiver].amountA += amountA.toUint128();
         withdraws[tickLower][receiver].amountB += amountB.toUint128();
-        withdraws[tickLower][receiver].timestamp += block.timestamp;
     }
 
     function withdraw(int24 tickLower) public {
@@ -143,90 +145,77 @@ contract Kommodo {
     }
 
     function collect(int24 tickLower) public {
-        uint256 amount0;
-        uint256 amount1;
-        if(liquidity[tickLower].liquidityId != 0){
-            //Collect LP interest
-            (uint256 liq0, uint256 liq1) = collectLiquidity(liquidity[tickLower].liquidityId, type(uint128).max, type(uint128).max, address(this)); 
-            amount0 += liq0;
-            amount1 += liq1;
-        }
-        if(collateral[tickLower].collateralId != 0){
-            //Collect LP interest
-            (uint256 col0, uint256 col1) = collectLiquidity(collateral[tickLower].collateralId, type(uint128).max, type(uint128).max, address(this));
-            amount0 += col0;
-            amount1 += col1;
-        }
-        //Redeposit LP interest 
-        (, uint128 _liquidity) = addLiquidity(tickLower, liquidity[tickLower].liquidityId, amount0.toUint128(), amount1.toUint128());
-        //Store available liquidity
-        liquidity[tickLower].liquidity += _liquidity; 
-        availableLiquidity[uint24(tickLower + 887272)] += _liquidity;     
+        uint256 id1 = liquidity[tickLower].liquidityId;
+        uint256 id2 = collateral[tickLower].collateralId;
+        (uint256 liq0, uint256 liq1) = id1 != 0 ? collectLiquidity(id1, type(uint128).max, type(uint128).max, address(this)) : (0,0);
+        (uint256 col0, uint256 col1) = id2 != 0 ? collectLiquidity(id2, type(uint128).max, type(uint128).max, address(this)) : (0,0);
+        liquidity[tickLower].fee0 += liq0 + col0;
+        liquidity[tickLower].fee1 += liq1 + col1; 
     }
 
     // Borrow functions
-    // @notice: open() function allows depositing more collateral than needed
+    // @dev: open() function allows depositing more collateral than needed
     function open(int24 tickLower, int24 tickLowerCol, uint128 amount, uint128 amountAMin, uint128 amountBMin, uint128 colA, uint128 colB, uint128 _interest) public {
-        //Check enough assets available
+        //Check liquidity available
         require(tickLower != tickLowerCol, "open: false ticks");
         require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "open: insufficient funds available");
-        //Check interest available
+        //Check minimal interest
+        require(amount > BASE_FEE, "open: insufficient liquidity for startingfee");
         require(_interest > amount * fee / BASE_FEE, "open: insufficient interest");
-        require(amount > 10000, "open: insufficient liquidity for startingfee");
         //Add Collateral to pool                
         TransferHelper.safeTransferFrom(tokenA, msg.sender, address(this), colA); 
         TransferHelper.safeApprove(tokenA, manager, colA);    
         TransferHelper.safeTransferFrom(tokenB, msg.sender, address(this), colB); 
         TransferHelper.safeApprove(tokenB, manager, colB);            
         (uint256 _id, uint128 _liquidity) = addLiquidity(tickLowerCol, collateral[tickLowerCol].collateralId, colA, colB);
-        //Store collateral global and individual
+        //Store global position
         collateral[tickLowerCol].collateralId = _id;
         collateral[tickLowerCol].amount += _liquidity;         
+        //Store individual positions
+        require(borrower[tickLowerCol][msg.sender].start == 0, "open: existing position");
         borrower[tickLowerCol][msg.sender] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp);    
-        //Lock liquidity for loan 
+        //Lock loan liquidity
         liquidity[tickLower].locked += amount - _interest;
-        //Adjust available liquidity
+        //Store available liquidity
         availableLiquidity[uint24(tickLower + 887272)] -= amount - _interest; 
-        //Check requirement collateral >= borrow
+        //Check requirement collateral >= borrow + margin
         checkRequirement(tickLower, tickLowerCol, amount.toInt128(), _liquidity.toInt128());
-        //Withdraw liquidity from pool
+        //Withdraw borrow amounts
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount - _interest, amountAMin, amountBMin);
         collectLiquidity(liquidity[tickLower].liquidityId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);  
     }
 
     function close(int24 tickLowerCol, address owner) public {
-        int24 _tickLower = borrower[tickLowerCol][owner].tick;
-        uint128 _liquidity = borrower[tickLowerCol][owner].liquidity;
-        uint128 _liquidityCol = borrower[tickLowerCol][owner].liquidityCol;
-        //Calculate interest
-        uint256 required = getInterest(_tickLower, tickLowerCol, _liquidity, borrower[tickLowerCol][owner].start);
-        //Release locked liquidity
-        liquidity[_tickLower].locked -= _liquidity - borrower[tickLowerCol][owner].interest; 
-        if (borrower[tickLowerCol][msg.sender].interest >= required) {
-            //Only owner can close open position
+        require(borrower[tickLowerCol][owner].start != 0, "close: no open position");
+        //Get borrow position
+        Borrower memory param = borrower[tickLowerCol][owner];
+        //Unlock liquidity
+        liquidity[param.tick].locked -= param.liquidity - param.interest; 
+        //Calculate interest required
+        uint256 required = getInterest(param.tick, tickLowerCol, param.liquidity, param.start);
+        if (param.interest >= required) {
+            //Only owner allowed
             require(owner == msg.sender, "close: not the owner");
-            //Return unused interest by lowering the required liquidity deposit
-            _liquidity = _liquidity - (borrower[tickLowerCol][owner].interest - required.toUint128());
-            //Add interest to liquidity
-            liquidity[_tickLower].liquidity += borrower[tickLowerCol][owner].interest - required.toUint128();
-        } else {
-            //Add interest to liquidity
-            liquidity[_tickLower].liquidity += borrower[tickLowerCol][owner].interest;  
-        }
+            param.interest -= required.toUint128();
+            //Return unused interest
+            param.liquidity -= param.interest;
+        } 
+        //Add interest to liquidity
+        liquidity[param.tick].liquidity += param.interest;  
         //Adjust available liquidity
-        availableLiquidity[uint24(_tickLower + 887272)] += _liquidity;  
-        collateral[tickLowerCol].amount -= _liquidityCol;  
+        availableLiquidity[uint24(param.tick + 887272)] += param.liquidity;  
+        collateral[tickLowerCol].amount -= param.liquidityCol;  
         delete borrower[tickLowerCol][owner];     
         //Deposit liquidity to pool
         (uint160 priceX96,int24 tick,,,,,) = IUniswapV3Pool(pool).slot0();
-        (int256 amountA, int256 amountB) = liquidityToAmounts(tick, _tickLower, priceX96, _liquidity.toInt128());
+        (int256 amountA, int256 amountB) = liquidityToAmounts(tick, param.tick, priceX96, param.liquidity.toInt128());
         TransferHelper.safeTransferFrom(tokenA, msg.sender, address(this), amountA.toUint256()); 
         TransferHelper.safeApprove(tokenA, manager, amountA.toUint256());  
         TransferHelper.safeTransferFrom(tokenB, msg.sender, address(this), amountB.toUint256()); 
         TransferHelper.safeApprove(tokenB, manager, amountB.toUint256());    
-        addLiquidity(_tickLower, liquidity[_tickLower].liquidityId, (amountA.toUint256()).toUint128(), (amountB.toUint256()).toUint128());
+        addLiquidity(param.tick, liquidity[param.tick].liquidityId, (amountA.toUint256()).toUint128(), (amountB.toUint256()).toUint128());
         //Withdraw collateral from pool
-        (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, _liquidityCol, 0, 0);
+        (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, param.liquidityCol, 0, 0);
         collectLiquidity(collateral[tickLowerCol].collateralId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);
     }
 
@@ -254,7 +243,7 @@ contract Kommodo {
             INonfungiblePositionManager.IncreaseLiquidityParams memory params = INonfungiblePositionManager.IncreaseLiquidityParams(
                 id,                                     //uint256 tokenId;
                 amountA,                                //uint256 amount0Desired; 
-                amountB,                                //uint256 amount1De sired; 
+                amountB,                                //uint256 amount1Desired; 
                 0,                                      //uint256 amount0Min;
                 0,                                      //uint256 amount1Min;
                 block.timestamp
@@ -287,7 +276,7 @@ contract Kommodo {
         (amount0, amount1) = INonfungiblePositionManager(manager).collect(paramsCollect);     
     }
 
-    //View function
+    //View functions
     function checkRequirement(int24 tickBor, int24 tickCol, int128 amountBor, int128 amountCol) public view {
         int256 bor0 = SqrtPriceMath.getAmount0Delta(
                 TickMath.getSqrtRatioAtTick(tickBor),
@@ -311,7 +300,7 @@ contract Kommodo {
         );
         //bor and cor are positive for positve liquidity inputs
         col0 = col0 * (margin + BASE_MARGIN) / BASE_MARGIN;
-        col1 = col0 * (margin + BASE_MARGIN) / BASE_MARGIN;
+        col1 = col1 * (margin + BASE_MARGIN) / BASE_MARGIN;
         require(bor0 <= col0 && bor1 <= col1, "checkRequirement: insufficient collateral for borrow");
     }
 
@@ -344,11 +333,19 @@ contract Kommodo {
         }
     }
 
+    //Interest = time passed * number ticks passed * interest per second per tick * liquidity
+    //Fee = liquidity * start fee
     function getInterest(int24 tickBor, int24 tickCol, uint256 _liquidity, uint256 start) public view returns(uint256 amount){
-        uint24 ticks = uint24((tickBor - tickCol) / tickDelta);
-        amount = (block.timestamp - start) * interest * ticks * _liquidity / BASE_INTEREST + _liquidity * fee / BASE_FEE;
+        //Order ticks
+        (int24 tickLow, int24 tickUp) = tickBor > tickCol ? (tickBor, tickCol) : (tickCol, tickBor);
+        //Calculate interest and fee
+        uint256 deltaTime = (block.timestamp - start);
+        uint24 deltaTick = uint24((tickLow - tickUp) / tickDelta);
+        uint256 deltaInterest = interest * deltaTime * deltaTick;
+        uint256 _interest = _liquidity * deltaInterest / BASE_INTEREST;
+        uint256 _fee = _liquidity * fee / BASE_FEE;
+        amount =  _interest + _fee;
     }
-
 }
 
 
