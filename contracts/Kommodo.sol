@@ -6,6 +6,7 @@ import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-periphery/contracts/libraries/PositionKey.sol';
+import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
 
 import './libraries/SqrtPriceMath.sol';
 import './libraries/TickMath.sol';
@@ -25,13 +26,17 @@ contract Kommodo {
         uint128 liquidity;
         uint128 locked;
         uint128 shares;
-        uint256 fee0;
-        uint256 fee1;
     } 
 
     struct Collateral { 
         uint256 collateralId;
         uint128 amount;
+    }
+
+    struct Lender {
+        uint128 share;
+        uint256 feeGrowthInside0LastX128;
+        uint256 feeGrowthInside1LastX128;
     }
 
     struct Borrower { 
@@ -40,6 +45,8 @@ contract Kommodo {
         uint128 liquidityCol;
         uint128 interest;
         uint256 start;
+        uint256 feeGrowthInside0LastX128;
+        uint256 feeGrowthInside1LastX128;
     }
 
     struct Withdraw { 
@@ -68,7 +75,7 @@ contract Kommodo {
 
     mapping(int24 => Liquidity) public liquidity;
     mapping(int24 => Collateral) public collateral;
-    mapping(int24 => mapping(address => uint128)) public lender;
+    mapping(int24 => mapping(address => Lender)) public lender;
     mapping(int24 => mapping(address => Borrower)) public borrower;
     mapping(int24 => mapping(address => Withdraw)) public withdraws;
 
@@ -100,20 +107,29 @@ contract Kommodo {
         TransferHelper.safeApprove(tokenB, manager, amountB); 
         //Add liquidity to pool     
         (uint256 _id, uint128 _liquidity) = addLiquidity(tickLower, liquidity[tickLower].liquidityId, amountA, amountB);
-        //Store user share of liquidity
+        //Withdraw poolfee for position
+        bytes32 positionKey = PositionKey.compute(manager, tickLower, tickLower + tickDelta);
+        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
+        if(lender[tickLower][msg.sender].share != 0){
+            uint256 liquidity_ = liquidity[tickLower].liquidity / liquidity[tickLower].shares * lender[tickLower][msg.sender].share;
+            collectFee(tickLower, msg.sender, liquidity_, feeGrowthInside0LastX128, feeGrowthInside1LastX128);
+        }
+        //Store individual position
         uint128 share = liquidity[tickLower].shares == 0 ? _liquidity : liquidity[tickLower].liquidity / liquidity[tickLower].shares * _liquidity;
         require(share > 0, "provide: insufficient share");
-        lender[tickLower][msg.sender] += share;
+        lender[tickLower][msg.sender].share += share;
+        lender[tickLower][msg.sender].feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+        lender[tickLower][msg.sender].feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
         //Store global liquidity data
         liquidity[tickLower].liquidityId = _id;
         liquidity[tickLower].liquidity += _liquidity; 
         liquidity[tickLower].shares += share;
-        //Store available liquidity
+        //Adjust available liquidity
         availableLiquidity[uint24(tickLower + 887272)] += _liquidity;     
     }
 
     function take(int24 tickLower, address receiver, uint128 share, uint128 amountMin0, uint128 amountMin1) public {                  
-        //Shares to liquidity
+        //Check sufficient liquidity
         uint128 amount = liquidity[tickLower].liquidity / liquidity[tickLower].shares * share;
         require(amount > 0, "take: zero liquidity");
         require(liquidity[tickLower].liquidity - liquidity[tickLower].locked >= amount, "take: insufficient liquidity");
@@ -122,12 +138,19 @@ contract Kommodo {
         liquidity[tickLower].shares -= share; 
         //Adjust available liquidity
         availableLiquidity[uint24(tickLower + 887272)] -= amount; 
+        //Withdraw poolfee for positions
+        bytes32 positionKey = PositionKey.compute(manager, tickLower, tickLower + tickDelta);
+        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
+        if(lender[tickLower][msg.sender].share != 0){
+            uint256 liquidity_ = liquidity[tickLower].liquidity / liquidity[tickLower].shares * lender[tickLower][msg.sender].share;
+            collectFee(tickLower, msg.sender, liquidity_, feeGrowthInside0LastX128, feeGrowthInside1LastX128);
+        }
         //Adjust individual positions
-        lender[tickLower][msg.sender] -= share;  
+        lender[tickLower][msg.sender].share -= share;  
+        lender[tickLower][msg.sender].feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+        lender[tickLower][msg.sender].feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
         //Remove liquidity from pool
         (uint256 amountA, uint256 amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount, amountMin0, amountMin1);
-        //Collect withdraw amounts
-        collectLiquidity(liquidity[tickLower].liquidityId, amountA.toUint128(), amountB.toUint128(), address(this));  
         //Store withdraw 
         withdraws[tickLower][receiver].timestamp = block.timestamp;
         withdraws[tickLower][receiver].amountA += amountA.toUint128();
@@ -135,21 +158,13 @@ contract Kommodo {
     }
 
     function withdraw(int24 tickLower) public {
+        require(withdraws[tickLower][msg.sender].timestamp != 0, "withdraw: no withdraw");
         require(withdraws[tickLower][msg.sender].timestamp < block.timestamp, "withdraw: pending");
         uint128 withdrawA = withdraws[tickLower][msg.sender].amountA;
         uint128 withdrawB = withdraws[tickLower][msg.sender].amountB;
         delete withdraws[tickLower][msg.sender];
-        TransferHelper.safeTransfer(address(tokenA), msg.sender, withdrawA); 
-        TransferHelper.safeTransfer(address(tokenB), msg.sender, withdrawB); 
-    }
-
-    function collect(int24 tickLower) public {
-        uint256 id1 = liquidity[tickLower].liquidityId;
-        uint256 id2 = collateral[tickLower].collateralId;
-        (uint256 liq0, uint256 liq1) = id1 != 0 ? collectLiquidity(id1, type(uint128).max, type(uint128).max, address(this)) : (0,0);
-        (uint256 col0, uint256 col1) = id2 != 0 ? collectLiquidity(id2, type(uint128).max, type(uint128).max, address(this)) : (0,0);
-        liquidity[tickLower].fee0 += liq0 + col0;
-        liquidity[tickLower].fee1 += liq1 + col1; 
+        //Withdraw amounts
+        collectLiquidity(liquidity[tickLower].liquidityId, withdrawA, withdrawB, msg.sender);  
     }
 
     // Borrow functions
@@ -172,7 +187,11 @@ contract Kommodo {
         collateral[tickLowerCol].amount += _liquidity;         
         //Store individual positions
         require(borrower[tickLowerCol][msg.sender].start == 0, "open: existing position");
-        borrower[tickLowerCol][msg.sender] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp);    
+    {
+        bytes32 positionKey = PositionKey.compute(manager, tickLowerCol, tickLowerCol + tickDelta);
+        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
+        borrower[tickLowerCol][msg.sender] = Borrower(tickLower, amount, _liquidity, _interest, block.timestamp, feeGrowthInside0LastX128, feeGrowthInside1LastX128);    
+    }    
         //Lock loan liquidity
         liquidity[tickLower].locked += amount - _interest;
         //Store available liquidity
@@ -203,6 +222,11 @@ contract Kommodo {
         liquidity[param.tick].liquidity += param.interest;  
         //Adjust available liquidity
         availableLiquidity[uint24(param.tick + 887272)] += param.liquidity;  
+        //Retrieve poolfee
+        bytes32 positionKey = PositionKey.compute(manager, tickLowerCol, tickLowerCol + tickDelta);
+        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
+        collectFee(tickLowerCol, owner, param.liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128);
+        //Adjust individual position
         collateral[tickLowerCol].amount -= param.liquidityCol;  
         delete borrower[tickLowerCol][owner];     
         //Deposit liquidity to pool
@@ -275,6 +299,30 @@ contract Kommodo {
         (amount0, amount1) = INonfungiblePositionManager(manager).collect(paramsCollect);     
     }
 
+    function collectFee(int24 tickLower, address owner, uint256 _liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) internal {
+        uint256 delta0;
+        uint256 delta1;
+        unchecked{
+            delta0 = feeGrowthInside0LastX128 - lender[tickLower][owner].feeGrowthInside0LastX128;
+            delta1 = feeGrowthInside1LastX128 - lender[tickLower][owner].feeGrowthInside1LastX128;
+        }
+        withdraws[tickLower][msg.sender].timestamp = block.timestamp;
+        withdraws[tickLower][msg.sender].amountA += uint128(
+            FullMath.mulDiv(
+                delta0,
+                _liquidity,
+                FixedPoint128.Q128
+            )
+        );
+        withdraws[tickLower][msg.sender].amountB += uint128(
+            FullMath.mulDiv(
+                delta1,
+                _liquidity,
+                FixedPoint128.Q128
+            )
+        );
+    }
+
     //View functions
     function checkRequirement(int24 tickBor, int24 tickCol, int128 amountBor, int128 amountCol) public view {
         int256 bor0 = SqrtPriceMath.getAmount0Delta(
@@ -332,7 +380,7 @@ contract Kommodo {
         }
     }
 
-    //Interest = time passed * number ticks passed * interest per second per tick * liquidity
+    //Interest = liquidity * time passed * number ticks passed * interest per second per tick
     //Fee = liquidity * start fee
     function getInterest(int24 tickBor, int24 tickCol, uint256 _liquidity, uint256 start) public view returns(uint256 amount){
         //Order ticks

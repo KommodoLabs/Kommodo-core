@@ -191,7 +191,7 @@ describe("Kommodo_gas", function () {
       gasProvide = await kommodo.connect(signer2).estimateGas.provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
       console.log("Povide add AMM: ", gasProvide.toString());
       //Take estimate
-      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
+      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).share.div(2)
       gasTake = await kommodo.connect(signer2).estimateGas.take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
       console.log("Take: ", gasTake.toString());
       //Withdraw estimate
