@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.5.0;
+pragma solidity >=0.8.0;
 
 import '@uniswap/v3-core/contracts/libraries/LowGasSafeMath.sol';
 //import '@uniswap/v3-core/contracts/libraries/SafeCast.sol';
@@ -37,22 +37,26 @@ library SqrtPriceMath {
         uint256 numerator1 = uint256(liquidity) << FixedPoint96.RESOLUTION;
 
         if (add) {
-            uint256 product;
-            if ((product = amount * sqrtPX96) / amount == sqrtPX96) {
-                uint256 denominator = numerator1 + product;
-                if (denominator >= numerator1)
-                    // always fits in 160 bits
-                    return uint160(FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator));
-            }
+            unchecked {
+                uint256 product;
+                if ((product = amount * sqrtPX96) / amount == sqrtPX96) {
+                    uint256 denominator = numerator1 + product;
+                    if (denominator >= numerator1)
+                        // always fits in 160 bits
+                        return uint160(FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator));
+                }
 
-            return uint160(UnsafeMath.divRoundingUp(numerator1, (numerator1 / sqrtPX96).add(amount)));
+                return uint160(UnsafeMath.divRoundingUp(numerator1, (numerator1 / sqrtPX96).add(amount)));
+            }
         } else {
-            uint256 product;
-            // if the product overflows, we know the denominator underflows
-            // in addition, we must check that the denominator does not underflow
-            require((product = amount * sqrtPX96) / amount == sqrtPX96 && numerator1 > product);
-            uint256 denominator = numerator1 - product;
-            return FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator).toUint160();
+            unchecked {
+                uint256 product;
+                // if the product overflows, we know the denominator underflows
+                // in addition, we must check that the denominator does not underflow
+                require((product = amount * sqrtPX96) / amount == sqrtPX96 && numerator1 > product);
+                uint256 denominator = numerator1 - product;
+                return FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator).toUint160();
+            }
         }
     }
 
@@ -93,7 +97,9 @@ library SqrtPriceMath {
 
             require(sqrtPX96 > quotient);
             // always fits 160 bits
-            return uint160(sqrtPX96 - quotient);
+            unchecked {
+                return uint160(sqrtPX96 - quotient);
+            }
         }
     }
 
@@ -157,20 +163,22 @@ library SqrtPriceMath {
         uint128 liquidity,
         bool roundUp
     ) public pure returns (uint256 amount0) {
-        if (sqrtRatioAX96 > sqrtRatioBX96) (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
+        unchecked {
+            if (sqrtRatioAX96 > sqrtRatioBX96) (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
 
-        uint256 numerator1 = uint256(liquidity) << FixedPoint96.RESOLUTION;
-        uint256 numerator2 = sqrtRatioBX96 - sqrtRatioAX96;
+            uint256 numerator1 = uint256(liquidity) << FixedPoint96.RESOLUTION;
+            uint256 numerator2 = sqrtRatioBX96 - sqrtRatioAX96;
 
-        require(sqrtRatioAX96 > 0);
+            require(sqrtRatioAX96 > 0);
 
-        return
-            roundUp
-                ? UnsafeMath.divRoundingUp(
-                    FullMath.mulDivRoundingUp(numerator1, numerator2, sqrtRatioBX96),
-                    sqrtRatioAX96
-                )
-                : FullMath.mulDiv(numerator1, numerator2, sqrtRatioBX96) / sqrtRatioAX96;
+            return
+                roundUp
+                    ? UnsafeMath.divRoundingUp(
+                        FullMath.mulDivRoundingUp(numerator1, numerator2, sqrtRatioBX96),
+                        sqrtRatioAX96
+                    )
+                    : FullMath.mulDiv(numerator1, numerator2, sqrtRatioBX96) / sqrtRatioAX96;
+        }
     }
 
     /// @notice Gets the amount1 delta between two prices
@@ -186,12 +194,14 @@ library SqrtPriceMath {
         uint128 liquidity,
         bool roundUp
     ) internal pure returns (uint256 amount1) {
-        if (sqrtRatioAX96 > sqrtRatioBX96) (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
+        unchecked {
+            if (sqrtRatioAX96 > sqrtRatioBX96) (sqrtRatioAX96, sqrtRatioBX96) = (sqrtRatioBX96, sqrtRatioAX96);
 
-        return
-            roundUp
-                ? FullMath.mulDivRoundingUp(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96)
-                : FullMath.mulDiv(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96);
+            return
+                roundUp
+                    ? FullMath.mulDivRoundingUp(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96)
+                    : FullMath.mulDiv(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96);
+        }
     }
 
     /// @notice Helper that gets signed token0 delta
@@ -204,10 +214,12 @@ library SqrtPriceMath {
         uint160 sqrtRatioBX96,
         int128 liquidity
     ) internal pure returns (int256 amount0) {
-        return
-            liquidity < 0
-                ? -getAmount0Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(-liquidity), false).toInt256()
-                : getAmount0Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(liquidity), true).toInt256();
+        unchecked {
+            return
+                liquidity < 0
+                    ? -getAmount0Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(-liquidity), false).toInt256()
+                    : getAmount0Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(liquidity), true).toInt256();
+        }
     }
 
     /// @notice Helper that gets signed token1 delta
@@ -220,9 +232,11 @@ library SqrtPriceMath {
         uint160 sqrtRatioBX96,
         int128 liquidity
     ) internal pure returns (int256 amount1) {
-        return
-            liquidity < 0
-                ? -getAmount1Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(-liquidity), false).toInt256()
-                : getAmount1Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(liquidity), true).toInt256();
+        unchecked {
+            return
+                liquidity < 0
+                    ? -getAmount1Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(-liquidity), false).toInt256()
+                    : getAmount1Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(liquidity), true).toInt256();
+        }
     }
 }
