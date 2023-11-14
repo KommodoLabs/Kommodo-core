@@ -141,6 +141,8 @@ contract Kommodo {
         //Check sufficient liquidity
         uint128 amount = _liquidity.liquidity / _liquidity.shares * share;
         require(_liquidity.liquidity - _liquidity.locked >= amount, "take: insufficient liquidity");
+        //Remove liquidity from pool
+        (uint256 amountA, uint256 amountB) = removeLiquidity(_liquidity.liquidityId, amount, amountMin0, amountMin1);
         //Update pool feegrowth liquidty
         updateLiquidityPoolFee(tickLower);
         //Withdraw poolFee liquidity
@@ -148,17 +150,15 @@ contract Kommodo {
             uint256 liquidity_ = _liquidity.liquidity / _liquidity.shares * param.share;
             collectFee(tickLower, liquidity_, _liquidity.feeGrowthLocal0LastX128, _liquidity.feeGrowthLocal1LastX128, param.feeGrowthLocal0LastX128,  param.feeGrowthLocal1LastX128);
         }
+        //Adjust individual positions
+        param.share -= share;  
+        param.feeGrowthLocal0LastX128 = _liquidity.feeGrowthLocal0LastX128;
+        param.feeGrowthLocal1LastX128 = _liquidity.feeGrowthLocal1LastX128;
         //Adjust global position  
         _liquidity.liquidity -= amount;  
         _liquidity.shares -= share; 
         //Adjust available liquidity
         availableLiquidity[uint24(tickLower + 887272)] -= amount;
-        //Adjust individual positions
-        param.share -= share;  
-        param.feeGrowthLocal0LastX128 = _liquidity.feeGrowthLocal0LastX128;
-        param.feeGrowthLocal1LastX128 = _liquidity.feeGrowthLocal1LastX128;
-        //Remove liquidity from pool
-        (uint256 amountA, uint256 amountB) = removeLiquidity(_liquidity.liquidityId, amount, amountMin0, amountMin1);
         //Store withdraw 
         withdraws[tickLower][receiver].timestamp = block.timestamp;
         withdraws[tickLower][receiver].amountA += amountA.toUint128();
@@ -170,6 +170,7 @@ contract Kommodo {
         require(withdraws[tickLower][msg.sender].timestamp < block.timestamp, "withdraw: pending");
         uint128 withdrawA = withdraws[tickLower][msg.sender].amountA;
         uint128 withdrawB = withdraws[tickLower][msg.sender].amountB;
+        //Remove withdraw position
         delete withdraws[tickLower][msg.sender];
         //Withdraw amounts
         collectLiquidity(liquidity[tickLower].liquidityId, withdrawA, withdrawB, msg.sender);  
@@ -202,14 +203,15 @@ contract Kommodo {
     }    
         //Lock loan liquidity
         liquidity[tickLower].locked += amount - _interest;
-        //Store available liquidity
-        availableLiquidity[uint24(tickLower + 887272)] -= amount - _interest; 
         //Check requirement collateral >= borrow + margin
         checkRequirement(tickLower, tickLowerCol, amount.toInt128(), _liquidity.toInt128());
+        //Burn borrow amounts
+        (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount - _interest, amountAMin, amountBMin);
         //Update pool feegrowth liquidty
         updateLiquidityPoolFee(tickLower);
+        //Store available liquidity
+        availableLiquidity[uint24(tickLower + 887272)] -= amount - _interest; 
         //Withdraw borrow amounts
-        (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLower].liquidityId, amount - _interest, amountAMin, amountBMin);
         collectLiquidity(liquidity[tickLower].liquidityId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);  
     }
 
@@ -218,8 +220,6 @@ contract Kommodo {
         Borrower memory param = borrower[tickLowerCol][owner];
         //Check existance
         require(param.start != 0, "close: no open position");
-        //Unlock liquidity
-        liquidity[param.tick].locked -= param.liquidity - param.interest; 
         //Calculate interest required
         uint256 required = getInterest(param.tick, tickLowerCol, param.liquidity, param.start);
         if (param.interest >= required) {
@@ -228,20 +228,14 @@ contract Kommodo {
             param.interest -= required.toUint128();
             //Return unused interest
             param.liquidity -= param.interest;
-        } 
-        //Add interest to liquidity
-        liquidity[param.tick].liquidity += param.interest;  
-        //Adjust available liquidity
-        availableLiquidity[uint24(param.tick + 887272)] += param.liquidity;  
+        }   
         //Retrieve collateral poolfee
         bytes32 positionKey = PositionKey.compute(manager, tickLowerCol, tickLowerCol + tickDelta);
         (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
         collectFee(tickLowerCol, param.liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128, param.feeGrowthInside0LastX128, param.feeGrowthInside1LastX128);
-        //Adjust individual position
+        //Adjust individual collateral position
         collateral[tickLowerCol].amount -= param.liquidityCol;  
         delete borrower[tickLowerCol][owner];     
-        //Update pool feegrowth liquidty
-        updateLiquidityPoolFee(param.tick);
         //Deposit liquidity to pool
         (uint160 priceX96,int24 tick,,,,,) = IUniswapV3Pool(pool).slot0();
         (int256 amountA, int256 amountB) = liquidityToAmounts(tick, param.tick, priceX96, param.liquidity.toInt128());
@@ -250,6 +244,14 @@ contract Kommodo {
         TransferHelper.safeTransferFrom(tokenB, msg.sender, address(this), amountB.toUint256()); 
         TransferHelper.safeApprove(tokenB, manager, amountB.toUint256());    
         addLiquidity(param.tick, liquidity[param.tick].liquidityId, (amountA.toUint256()).toUint128(), (amountB.toUint256()).toUint128());
+        //Update pool feegrowth liquidty
+        updateLiquidityPoolFee(param.tick);
+        //Unlock liquidity
+        liquidity[param.tick].locked -= param.liquidity - param.interest; 
+        //Add interest to liquidity
+        liquidity[param.tick].liquidity += param.interest;  
+        //Adjust available liquidity
+        availableLiquidity[uint24(param.tick + 887272)] += param.liquidity;
         //Withdraw collateral from pool
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, param.liquidityCol, 0, 0);
         collectLiquidity(collateral[tickLowerCol].collateralId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);
