@@ -220,20 +220,11 @@ contract Kommodo {
         Borrower memory param = borrower[tickLowerCol][owner];
         //Check existance
         require(param.start != 0, "close: no open position");
-        //Calculate interest required
-        uint256 required = getInterest(param.tick, tickLowerCol, param.liquidity, param.start);
-        if (param.interest >= required) {
-            //Only owner allowed
-            require(owner == msg.sender, "close: not the owner");
-            param.interest -= required.toUint128();
-            //Return unused interest
-            param.liquidity -= param.interest;
-        }   
         //Retrieve collateral poolfee
         bytes32 positionKey = PositionKey.compute(manager, tickLowerCol, tickLowerCol + tickDelta);
         (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
         collectFee(tickLowerCol, param.liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128, param.feeGrowthInside0LastX128, param.feeGrowthInside1LastX128);
-        //Adjust individual collateral position
+        //Adjust individual position
         collateral[tickLowerCol].amount -= param.liquidityCol;  
         delete borrower[tickLowerCol][owner];     
         //Deposit liquidity to pool
@@ -246,12 +237,21 @@ contract Kommodo {
         addLiquidity(param.tick, liquidity[param.tick].liquidityId, (amountA.toUint256()).toUint128(), (amountB.toUint256()).toUint128());
         //Update pool feegrowth liquidty
         updateLiquidityPoolFee(param.tick);
-        //Unlock liquidity
+        //Unlock liquidity  
         liquidity[param.tick].locked -= param.liquidity - param.interest; 
+        //Calculate interest required
+        uint256 required = getInterest(param.tick, tickLowerCol, param.liquidity, param.start);
+        if (param.interest >= required) {
+            //Only owner allowed
+            require(owner == msg.sender, "close: not the owner");
+            param.interest -= required.toUint128();
+            //Return unused interest
+            param.liquidity -= param.interest;
+        } 
         //Add interest to liquidity
         liquidity[param.tick].liquidity += param.interest;  
         //Adjust available liquidity
-        availableLiquidity[uint24(param.tick + 887272)] += param.liquidity;
+        availableLiquidity[uint24(param.tick + 887272)] += param.liquidity;  
         //Withdraw collateral from pool
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, param.liquidityCol, 0, 0);
         collectLiquidity(collateral[tickLowerCol].collateralId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);
