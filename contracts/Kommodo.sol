@@ -342,9 +342,15 @@ contract Kommodo {
         //Adjust feegrowth for difference in liquidity
         bytes32 lendingKey = PositionKey.compute(manager, tickLower, tickLower + tickDelta);
         (, uint256 feeGrowthInside0LastX128l, uint256 feeGrowthInside1LastX128l, , ) = IUniswapV3Pool(pool).positions(lendingKey); 
+        uint256 delta0;
+        uint256 delta1;
+        unchecked{
+            delta0 = feeGrowthInside0LastX128l -  feeGrowth[tickLower][0];
+            delta1 = feeGrowthInside1LastX128l - feeGrowth[tickLower][1];
+        }
         if(liquidity[tickLower].liquidity != 0){
-            liquidity[tickLower].feeGrowthLocal0LastX128 += feeGrowthInside0LastX128l - feeGrowth[tickLower][0] * availableLiquidity[uint24(tickLower + 887272)] / liquidity[tickLower].liquidity;
-            liquidity[tickLower].feeGrowthLocal0LastX128 += feeGrowthInside1LastX128l - feeGrowth[tickLower][1] * availableLiquidity[uint24(tickLower + 887272)] / liquidity[tickLower].liquidity;
+            liquidity[tickLower].feeGrowthLocal0LastX128 += FullMath.mulDiv(delta0, availableLiquidity[uint24(tickLower + 887272)], liquidity[tickLower].liquidity);
+            liquidity[tickLower].feeGrowthLocal0LastX128 += FullMath.mulDiv(delta1, availableLiquidity[uint24(tickLower + 887272)], liquidity[tickLower].liquidity);
             feeGrowth[tickLower][0] = feeGrowthInside0LastX128l;
             feeGrowth[tickLower][1] = feeGrowthInside1LastX128l;
         }
