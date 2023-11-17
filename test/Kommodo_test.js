@@ -294,10 +294,10 @@ describe("Kommodo_test", function () {
       //Check collateral stored
       collateral = await kommodo.collateral(slot0.tick + spacing)
       expect(collateral.collateralId).to.equal("2")
-      expect(collateral.amount).to.equal("10015012305")
+      expect(collateral.amount).to.equal("10015012305")     
       //Check borrow stored
-      borrower = await kommodo.borrower(slot0.tick + spacing, owner.address)     
-      expect(borrower.tick).to.equal(tickLower)
+      let key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
+      borrower = await kommodo.borrower(key)
       expect(borrower.liquidity).to.equal("10000000000")
       expect(borrower.liquidityCol).to.equal(collateral.amount)
       expect(borrower.interest).to.equal("10000010")
@@ -328,7 +328,7 @@ describe("Kommodo_test", function () {
       expect(await token1.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
       expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Call close
-      await kommodo.connect(owner).close(slot0.tick + spacing, owner.address)
+      await kommodo.connect(owner).close(tickLower, slot0.tick + spacing, owner.address)
       //Check return balance (some interest payed) and minus 1 for rounding LP
       expect(await token1.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
       expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
@@ -338,14 +338,15 @@ describe("Kommodo_test", function () {
       //Check collateral stored
       collateral = await kommodo.collateral(slot0.tick + spacing)
       expect(collateral.collateralId).to.equal("2")
-      expect(collateral.amount).to.equal(0)
+      expect(collateral.amount).to.equal(0) 
       //Check borrow stored
-      borrower = await kommodo.borrower(slot0.tick + spacing, owner.address)
-      expect(borrower.tick).to.equal(0)
+      let key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
+      borrower = await kommodo.borrower(key)
       expect(borrower.liquidity).to.equal(0)
       expect(borrower.liquidityCol).to.equal(0)
       expect(borrower.interest).to.equal(0)
       expect(borrower.start).to.equal(0)
+
     })
     it('Kommodo tests after swaps', async function () {
       const [owner, signer2] = await ethers.getSigners();
