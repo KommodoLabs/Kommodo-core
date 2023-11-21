@@ -194,25 +194,26 @@ contract Kommodo {
         (uint256 _id, uint128 _liquidity) = addLiquidity(tickLowerCol, collateral[tickLowerCol].collateralId, colA, colB);
         //Store global position
         collateral[tickLowerCol].collateralId = _id;
-        collateral[tickLowerCol].amount += _liquidity;         
+        collateral[tickLowerCol].amount += _liquidity;
+        //Check closed
+        require(borrower[key].interest >= getInterest(tickLowerBor, tickLowerCol, borrower[key].liquidity, borrower[key].start) + borrower[key].lastUsed, "open: loan closed");
         //Store individual position including collateral poolfee data
-
-
-        borrower[key].lastUsed = borrower[key].lastUsed == 0 ? getFee(_liquidity) : borrower[key].lastUsed + getInterest(tickLowerBor, tickLowerCol, amount, borrower[key].start) + getFee(amount); 
-        if(borrower[key].start != 0){
-            revert();
-        } 
-        
-
     {
         bytes32 positionKey = PositionKey.compute(manager, tickLowerCol, tickLowerCol + tickDelta);
         (, uint256 feeGrowthInside0LastX128c, uint256 feeGrowthInside1LastX128c, , ) = IUniswapV3Pool(pool).positions(positionKey);
-        borrower[key] = Borrower( amount, _liquidity, _interest, 0 ,block.timestamp, feeGrowthInside0LastX128c, feeGrowthInside1LastX128c);    
-    }    
+        collectFee(tickLowerCol, borrower[key].liquidity, feeGrowthInside0LastX128c, feeGrowthInside1LastX128c, borrower[key].feeGrowthInside0LastX128, borrower[key].feeGrowthInside1LastX128);
+        borrower[key].liquidity += amount;
+        borrower[key].liquidityCol += _liquidity;
+        borrower[key].interest += _interest;
+        borrower[key].start += block.timestamp;
+        borrower[key].feeGrowthInside0LastX128 = feeGrowthInside0LastX128c;
+        borrower[key].feeGrowthInside1LastX128 = feeGrowthInside1LastX128c;
+        borrower[key].lastUsed += getInterest(tickLowerBor, tickLowerCol, amount, borrower[key].start) + getFee(amount); 
+    } 
         //Lock loan liquidity
         liquidity[tickLowerBor].locked += amount - _interest;
         //Check requirement collateral >= borrow + margin
-        checkRequirement(tickLowerBor, tickLowerCol, amount.toInt128(), _liquidity.toInt128());
+        checkRequirement(tickLowerBor, tickLowerCol, borrower[key].liquidity .toInt128(), borrower[key].liquidityCol.toInt128());
         //Burn borrow amounts
         (uint256 _amountA, uint256 _amountB) = removeLiquidity(liquidity[tickLowerBor].liquidityId, amount - _interest, amountAMin, amountBMin);
         //Update pool feegrowth liquidty
@@ -223,21 +224,33 @@ contract Kommodo {
         collectLiquidity(liquidity[tickLowerBor].liquidityId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);  
     }
 
-    function close(int24 tickLowerBor, int24 tickLowerCol, address owner) public {
+    function close(int24 tickLowerBor, int24 tickLowerCol, address owner, uint128 amountBor, uint128 amountCol) public {
         //Get borrow position
         Borrower memory param = borrower[getKey(owner, tickLowerBor, tickLowerCol)];
         //Check existence
         require(param.start != 0, "close: no open position");
         //Retrieve collateral poolfee
+    {
         bytes32 positionKey = PositionKey.compute(manager, tickLowerCol, tickLowerCol + tickDelta);
         (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = IUniswapV3Pool(pool).positions(positionKey);
         collectFee(tickLowerCol, param.liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128, param.feeGrowthInside0LastX128, param.feeGrowthInside1LastX128);
-        //Adjust individual position
-        collateral[tickLowerCol].amount -= param.liquidityCol;  
-        delete borrower[getKey(owner, tickLowerBor, tickLowerCol)];     
+    }   
+        //Adjust global position
+        collateral[tickLowerCol].amount -= amountCol;  
+        //Adjust individual positino
+        if(param.liquidity == amountBor && param.liquidityCol == amountCol) {
+            delete borrower[getKey(owner, tickLowerBor, tickLowerCol)];     
+        } else {
+            Borrower storage _borrower = borrower[getKey(owner, tickLowerBor, tickLowerCol)];
+            //check requirement and adjust amounts
+            checkRequirement(tickLowerBor, tickLowerCol, (param.liquidity - amountBor).toInt128(), (param.liquidityCol - amountCol).toInt128());
+            //adjust amounts
+            _borrower.liquidity -= amountBor;
+            _borrower.liquidityCol -= amountCol;
+        }
         //Deposit liquidity to pool
         (uint160 priceX96,int24 tick,,,,,) = IUniswapV3Pool(pool).slot0();
-        (int256 amountA, int256 amountB) = liquidityToAmounts(tick, tickLowerBor, priceX96, param.liquidity.toInt128());
+        (int256 amountA, int256 amountB) = liquidityToAmounts(tick, tickLowerBor, priceX96, amountBor.toInt128());
         TransferHelper.safeTransferFrom(tokenA, msg.sender, address(this), amountA.toUint256()); 
         TransferHelper.safeApprove(tokenA, manager, amountA.toUint256());  
         TransferHelper.safeTransferFrom(tokenB, msg.sender, address(this), amountB.toUint256()); 
@@ -246,9 +259,9 @@ contract Kommodo {
         //Update pool feegrowth liquidty
         updateLiquidityPoolFee(tickLowerBor);
         //Unlock liquidity  
-        liquidity[tickLowerBor].locked -= param.liquidity - param.interest; 
+        liquidity[tickLowerBor].locked -= amountBor - param.interest; 
         //Calculate interest required
-        uint256 required = getInterest(tickLowerBor, tickLowerCol, param.liquidity, param.start) + getFee(param.liquidity);
+        uint256 required = getInterest(tickLowerBor, tickLowerCol, param.liquidity, param.start) + param.lastUsed;
         if (param.interest >= required) {
             //Only owner allowed
             require(owner == msg.sender, "close: not the owner");
@@ -259,9 +272,9 @@ contract Kommodo {
         //Add interest to liquidity
         liquidity[tickLowerBor].liquidity += param.interest;  
         //Adjust available liquidity
-        availableLiquidity[uint24(tickLowerBor + 887272)] += param.liquidity;  
+        availableLiquidity[uint24(tickLowerBor + 887272)] += amountBor;  
         //Withdraw collateral from pool
-        (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, param.liquidityCol, 0, 0);
+        (uint256 _amountA, uint256 _amountB) = removeLiquidity(collateral[tickLowerCol].collateralId, amountCol, 0, 0);
         collectLiquidity(collateral[tickLowerCol].collateralId, _amountA.toUint128(), _amountB.toUint128(), msg.sender);
     }
 

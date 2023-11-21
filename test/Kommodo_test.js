@@ -328,7 +328,9 @@ describe("Kommodo_test", function () {
       expect(await token1.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
       expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
       //Call close
-      await kommodo.connect(owner).close(tickLower, slot0.tick + spacing, owner.address)
+      key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
+      borrower = await kommodo.borrower(key)
+      await kommodo.connect(owner).close(tickLower, slot0.tick + spacing, owner.address, borrower.liquidity, borrower.liquidityCol)
       //Check return balance (some interest payed) and minus 1 for rounding LP
       expect(await token1.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
       expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
@@ -340,7 +342,7 @@ describe("Kommodo_test", function () {
       expect(collateral.collateralId).to.equal("2")
       expect(collateral.amount).to.equal(0) 
       //Check borrow stored
-      let key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
+      key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
       borrower = await kommodo.borrower(key)
       expect(borrower.liquidity).to.equal(0)
       expect(borrower.liquidityCol).to.equal(0)

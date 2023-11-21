@@ -230,7 +230,9 @@ describe("Kommodo_gas", function () {
         0,                                  //amountB collateral
         liquidity_ / 1000 + 10              //interest deduction/deposit
       )
-      await kommodo.connect(owner).close(tickLower, slot0.tick + spacing, owner.address)
+      key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
+      borrower = await kommodo.borrower(key)
+      await kommodo.connect(owner).close(tickLower, slot0.tick + spacing, owner.address, borrower.liquidity, borrower.liquidityCol)
       gasBorrow = await kommodo.connect(owner).estimateGas.open(
         tickLower,                          //tick lower borrow
         slot0.tick + spacing,               //tick lower collateral
@@ -254,7 +256,9 @@ describe("Kommodo_gas", function () {
       )
       //Close estimate
       await tokenA.connect(owner).approve(kommodo.address, "4996002")
-      gasClose = await kommodo.connect(owner).estimateGas.close(tickLower, slot0.tick + spacing, owner.address)
+      key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
+      borrower = await kommodo.borrower(key)
+      gasClose = await kommodo.connect(owner).estimateGas.close(tickLower, slot0.tick + spacing, owner.address, borrower.liquidity, borrower.liquidityCol)
       console.log("Close: ", gasClose.toString());
     })
   })
