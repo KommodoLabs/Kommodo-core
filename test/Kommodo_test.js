@@ -179,7 +179,7 @@ describe("Kommodo_test", function () {
       expect(liquidity.locked).to.equal(0)
       expect(liquidity.shares).to.equal(liquidity.liquidity)
       //Check stored individual position share
-      expect((await kommodo.connect(signer2).lender(tickLower, signer2.address)).share).to.equal(liquidity.liquidity)
+      expect((await kommodo.connect(signer2).lender(tickLower, signer2.address))).to.equal(liquidity.liquidity)
     })   
     it('Should take liquidity from pool', async function () {
       const [owner, signer2] = await ethers.getSigners();
@@ -187,7 +187,7 @@ describe("Kommodo_test", function () {
       let slot0 = await pool.slot0()
       let spacing = await pool.tickSpacing()
       let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).share.div(2)
+      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
       //Check withdraw amounts zero before take
       let withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)      
       expect(withdraw.amountA).to.equal(0)
@@ -201,7 +201,7 @@ describe("Kommodo_test", function () {
       expect(liquidity.liquidity).to.equal(share.toString())
       expect(liquidity.shares).to.equal(share.toString())
       //Check new user share
-      expect((await kommodo.connect(signer2).lender(tickLower, signer2.address)).share).to.equal(share.toString())
+      expect((await kommodo.connect(signer2).lender(tickLower, signer2.address))).to.equal(share.toString())
       //Check stored withdraw
       withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)      
       if (withdraw.amountA == 0) {
