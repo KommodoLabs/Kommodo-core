@@ -58,7 +58,6 @@ contract Kommodo {
     int24 public tickDelta;
     uint24 public poolFee; 
 
-    bool public initialized;
     uint128 public fee;
     uint128 public interest;
     int256 public margin;
@@ -72,8 +71,6 @@ contract Kommodo {
     mapping(bytes32 => Borrower) public borrower;
 
     constructor(address _manager, address _tokenA, address _tokenB, uint24 _poolFee, uint128 _fee, uint128 _interest, int256 _margin) {
-        require(initialized == false, "initialize: already initialized");
-        initialized = true;
         //Store tokens
         tokenA = _tokenA;
         tokenB = _tokenB;
@@ -364,6 +361,7 @@ contract Kommodo {
     function getKey(address owner, int24 tickLowerBor, int24 tickLowerCol) public pure returns(bytes32 key){
         key = keccak256(abi.encode(owner, tickLowerBor, tickLowerCol));
     }
+
 }
 
 
