@@ -15,14 +15,16 @@ import './libraries/CallbackValidation.sol';
 */
 abstract contract Connector is IUniswapV3MintCallback {
     
-    address immutable factory;
+    address public factory;
 
     struct MintCallbackData {
         PoolAddress.PoolKey poolKey;
         address payer;
     }
 
-    constructor(address _factory) {
+    function initialize(address _factory) public {
+        require(_factory != address(0), "Connector: false factory"); 
+        require(factory == address(0), "Connector: already initialized"); 
         factory = _factory;
     }
 
@@ -38,7 +40,7 @@ abstract contract Connector is IUniswapV3MintCallback {
     }
 
     function addLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
-        internal 
+        public 
         returns(
             uint128 liquidity,
             uint256 amount0,
@@ -60,7 +62,7 @@ abstract contract Connector is IUniswapV3MintCallback {
                 amountA,
                 amountB
             );
-        }
+        }     
         // mint pool position
         (amount0, amount1) = pool.mint(
             address(this),
@@ -71,8 +73,30 @@ abstract contract Connector is IUniswapV3MintCallback {
         );
     }
 
+    function addLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amount)
+        public 
+        returns(
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            IUniswapV3Pool pool
+        )
+    {
+        PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({token0: tokenA, token1: tokenB, fee: poolFee});
+        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+        // mint pool position
+        liquidity = amount;
+        (amount0, amount1) = pool.mint(
+            address(this),
+            tickLower,
+            tickUpper,
+            liquidity,
+            abi.encode(MintCallbackData({poolKey: poolKey, payer: msg.sender}))
+        );
+    }
+
     function removeLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 liquidity) 
-        internal 
+        public 
         returns(
             uint256 amount0,
             uint256 amount1,
@@ -85,7 +109,7 @@ abstract contract Connector is IUniswapV3MintCallback {
     }
 
     function collectLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
-        internal 
+        public 
         returns(
             uint256 amount0,
             uint256 amount1,

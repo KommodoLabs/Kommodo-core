@@ -1,6 +1,5 @@
-
 const {Contract, ContractFactory, utils, BigNumber} = require('ethers')
-const { expect } = require("chai");
+const { expect } = require("chai")
 const bn = require('bignumber.js')
 const artifacts = {
     UniswapV3Factory: require("@uniswap/v3-core/artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json"),
@@ -9,9 +8,10 @@ const artifacts = {
     NonfungibleTokenPositionDescriptor: require("@uniswap/v3-periphery/artifacts/contracts/NonfungibleTokenPositionDescriptor.sol/NonfungibleTokenPositionDescriptor.json"),
     NonfungiblePositionManager: require("@uniswap/v3-periphery/artifacts/contracts/NonfungiblePositionManager.sol/NonfungiblePositionManager.json"),
     WETH9: require("./WETH9.json"),
+    Connector: require("../artifacts/contracts/Connector.sol/Connector.json"),
     KommodoFactory: require("../artifacts/contracts/KommodoFactory.sol/KommodoFactory.json"),
     Kommodo: require("../artifacts/contracts/Kommodo.sol/Kommodo.json"),
-};
+}
 const UniswapV3Pool = require("@uniswap/v3-core/artifacts/contracts/UniswapV3Pool.sol/UniswapV3Pool.json")
 const { nearestUsableTick } = require('@uniswap/v3-sdk')
 
@@ -53,9 +53,11 @@ function encodePriceSqrt(reserve1, reserve0){
 }
 
 describe("Kommodo_test", function () {
-  const provider  = waffle.provider;
+  const provider = waffle.provider
   before(async() => {
-    const [owner, signer2] = await ethers.getSigners();  
+    const [owner, signer2] = await ethers.getSigners()
+    account1 = owner;
+    account2 = signer2;
     //Deploy Tokens
     Weth = new ContractFactory(artifacts.WETH9.abi, artifacts.WETH9.bytecode, owner)
     weth = await Weth.deploy()
@@ -90,7 +92,7 @@ describe("Kommodo_test", function () {
         {
             NFTDescriptor: nftDescriptor.address,
         }
-    );
+    )
     NonfungibleTokenPositionDescriptor = new ContractFactory(artifacts.NonfungibleTokenPositionDescriptor.abi, linkedBytecode, owner)
     nonfungibleTokenPositionDescriptor = await NonfungibleTokenPositionDescriptor.deploy(weth.address)
       //console.log('nonfungibleTokenPositionDescriptor', nonfungibleTokenPositionDescriptor.address)
@@ -101,12 +103,12 @@ describe("Kommodo_test", function () {
     let tokenAdress0
     let tokenAdress1
     if(tokenA.address < weth.address) {
-      tokenAdress0 = tokenA.address;
+      tokenAdress0 = tokenA.address
       tokenAdress1 = weth.address
     } else {
-      tokenAdress0 = weth.address;
+      tokenAdress0 = weth.address
       tokenAdress1 = tokenA.address
-    }
+    } 
     await nonfungiblePositionManager.connect(owner).createAndInitializePoolIfNecessary(
         tokenAdress0,
         tokenAdress1,
@@ -128,9 +130,9 @@ describe("Kommodo_test", function () {
     MockRouter = await ethers.getContractFactory('Router', owner)
     mockRouter = await MockRouter.deploy()
       //console.log('mockRouter', mockRouter.address)      
-    //Deploy kommodo factory
+    //Deploy kommodo
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
-    kommodoFactory = await KommodoFactory.deploy(nonfungiblePositionManager.address, 500, 10, 1, 10)
+    kommodoFactory = await KommodoFactory.deploy(factory.address, 500, 10, 100, 1, 100)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
     await kommodoFactory.connect(owner).createKommodo(
@@ -148,264 +150,195 @@ describe("Kommodo_test", function () {
         provider
     )
       //console.log('kommodo', kommodo.address)
+    //load position data
+    slot0 = await pool.slot0()
+    spacing = await pool.tickSpacing()
+    ticklower = nearestUsableTick(slot0.tick, spacing) + 2 * spacing
+    tickupper = ticklower + spacing
 	})
-  describe("Kommodo_test", function () {    
-    it('Should provide liquidity to pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-      //Get amount
-      let base = new bn(10)
-      let amount = base.pow("18")
-      //Get provide() required data
-      let slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      //Mint funds 
-      await tokenA.connect(signer2).mint(amount.toString())
-      await weth.connect(signer2).deposit({value: amount.toString()})
-      await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
-		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-      expect(await tokenA.balanceOf(signer2.address)).to.equal(amount.toString())
-      expect(await weth.balanceOf(signer2.address)).to.equal(amount.toString())
-      //Call provide()
-      await kommodo.connect(signer2).provide(tickLower, amount.toString(), amount.toString(), { gasLimit: '1000000' })
-      //Check deposit success
-      expect(await tokenA.balanceOf(signer2.address)).to.equal(0)
-      expect(await weth.balanceOf(signer2.address)).to.equal(0)
-      //Check stored global position data 
-      let liquidity = await kommodo.connect(signer2).liquidity(tickLower)
-      expect(liquidity.liquidityId).to.equal(1)
-      expect(liquidity.liquidity).to.not.equal(0)
-      expect(liquidity.shares).to.not.equal(0)
-      expect(liquidity.locked).to.equal(0)
-      expect(liquidity.shares).to.equal(liquidity.liquidity)
-      //Check stored individual position share
-      expect((await kommodo.connect(signer2).lender(tickLower, signer2.address))).to.equal(liquidity.liquidity)
-    })   
-    it('Should take liquidity from pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-      //Get take() required data
-      let slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
-      //Check withdraw amounts zero before take
-      let withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)      
-      expect(withdraw.amountA).to.equal(0)
-      expect(withdraw.amountB).to.equal(0)
-      expect(withdraw.timestamp).to.equal(0)
-      //Call take
-      await kommodo.connect(signer2).take(tickLower, signer2.address, share, 0, 0, { gasLimit: '1000000' })
-      //Check stored global position data 
-      let liquidity = await kommodo.connect(signer2).liquidity(tickLower)
-      expect(liquidity.liquidityId).to.equal(1)
-      expect(liquidity.liquidity).to.equal(share.toString())
-      expect(liquidity.shares).to.equal(share.toString())
-      //Check new user share
-      expect((await kommodo.connect(signer2).lender(tickLower, signer2.address))).to.equal(share.toString())
-      //Check stored withdraw
-      withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)      
-      if (withdraw.amountA == 0) {
-        expect(withdraw.amountB).to.not.equal(0)
-      } else {
-        expect(withdraw.amountA).to.not.equal(0)
-      }
-      expect(withdraw.timestamp).to.not.equal(0)
-    })   
-    it('Should withdraw from pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();  
-      //Get amount
-      let base = new bn(10)
-      let amount = base.pow("18").div("2").minus("1")
-      //Get withdraw() required data
-      let slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      //Check withdraw exists
-      withdraw = await kommodo.connect(signer2).withdraws(tickLower, signer2.address)
-      if (withdraw.amountA == 0) {
-        expect(withdraw.amountB).to.not.equal(0)
-      } else {
-        expect(withdraw.amountA).to.not.equal(0)
-      }
-      expect(withdraw.timestamp).to.not.equal(0)
-      //Check balance zero before
-      expect(await tokenA.balanceOf(signer2.address)).to.equal(0)
-      expect(await weth.balanceOf(signer2.address)).to.equal(0)
-      await kommodo.connect(signer2).withdraw(tickLower)
-      //Check withdraw cleared
-      withdraw = await kommodo.connect(signer2).withdraws(tickLower,signer2.address)
-      expect(withdraw.amountA).to.equal(0)
-      expect(withdraw.amountB).to.equal(0)
-      expect(withdraw.timestamp).to.equal(0)
-      //Check withdraw received
-      balanceA = await tokenA.balanceOf(signer2.address)
-      balanceB = await weth.balanceOf(signer2.address)
-      if (balanceA == 0) {
-        expect(balanceB).to.equal(amount.toString())
-      } else {
-        expect(balanceA).to.equal(amount.toString())
-      }
+  describe("Kommodo_test_happy_update", function () {        
+    before(async function () {
+      //Mint tokens and approve kommodo
+      base = new bn(10)
+      amount = base.pow("18")
+      await tokenA.connect(account2).mint(amount.toString())
+      await weth.connect(account2).deposit({value: amount.toString()})
+      await tokenA.connect(account2).approve(kommodo.address, amount.toString())
+		  await weth.connect(account2).approve(kommodo.address, amount.toString())
+      await tokenA.connect(account1).mint(amount.toString())
+      await weth.connect(account1).deposit({value: amount.toString()})
+      await tokenA.connect(account1).approve(kommodo.address, amount.toString())
+		  await weth.connect(account1).approve(kommodo.address, amount.toString())
+    });
+    //Lender (LP) functions
+    it('Should provide liquidity', async function () { 
+      //Check kommodo stored correct factory
+      expect(await kommodoFactory.factory()).to.equal((factory.address).toString())
+      expect(await kommodo.factory()).to.equal((factory.address).toString())
+      //Mint lending position
+      deposit = 100
+      await kommodo.connect(account2).provide(ticklower, deposit, 0)
+      //Check position
+      positionKey = utils.solidityKeccak256(["address", "int24", "int24"], [kommodo.address, ticklower, tickupper])
+      AMM_position = await pool.positions(positionKey)
+      kommodo_position = await kommodo.liquidity(ticklower)
+      balanceA = await tokenA.balanceOf(account2.address)
+      expect(AMM_position.liquidity.toString()).to.not.equal('0')
+      expect(AMM_position.liquidity).to.equal(kommodo_position.liquidity)
+      expect(amount.minus(deposit).toString()).to.equal(balanceA.toString())
     })
-    it('Should borrow from pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-      //Get amount
-      let base = new bn(10)
-      let amount = base.pow("18")
-      //Get borrow() required data
-      let slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      //Sort tokens
-      let token0
-      let token1
-      if(tokenA.address < weth.address) {
-        token0 = tokenA
-        token1 = weth
-      } else {
-        token0 = weth;
-        token1 = tokenA
-      }
-      //Mint collateral funds  
-      await tokenA.connect(owner).mint(amount.toString())
-      await weth.connect(owner).deposit({value: amount.toString()})
-      await tokenA.connect(owner).approve(kommodo.address, amount.toString())
-		  await weth.connect(owner).approve(kommodo.address, amount.toString())
+    it('Should take liquidity', async function () {   
+      //Burn lending position
+      liquidity = Math.floor((await kommodo.availableLiquidity(ticklower + 887272)) / 2)
+      withdraw = deposit / 2 - 1
+      await kommodo.connect(account2).take(ticklower, account2.address, liquidity, 0, 0)
+      //Check position
+      positionKey = utils.solidityKeccak256(["address", "int24", "int24"], [kommodo.address, ticklower, tickupper])
+      AMM_position = await pool.positions(positionKey)
+      kommodo_position = await kommodo.liquidity(ticklower)
+      kommodo_withdraws = await kommodo.withdraws(ticklower, account2.address)
+      expect(AMM_position.liquidity).to.equal(await kommodo.availableLiquidity(ticklower + 887272))
+      expect(AMM_position.liquidity).to.equal(kommodo_position.liquidity)
+      expect(AMM_position.tokensOwed0.toString()).to.equal(withdraw.toString())
+      expect(AMM_position.tokensOwed0.toString()).to.equal(kommodo_withdraws.amountA)
+    })
+    it('Should withdraw liquidity', async function () {      
+      //Withdraw position
+      await kommodo.connect(account2).withdraw(ticklower)
+      //Check position
+      positionKey = utils.solidityKeccak256(["address", "int24", "int24"], [kommodo.address, ticklower, tickupper])
+      position = await pool.positions(positionKey)
+      balanceA = await tokenA.balanceOf(account2.address)
+      expect(position.tokensOwed0.toString()).to.equal('0') 
+      expect(balanceA.toString()).to.equal(amount.minus(deposit).plus(withdraw).toString())
+    })
+    //Borrower functions 
+    it('Should open loan', async function () {
       //Check start balance 
-      expect(await token0.balanceOf(owner.address)).to.equal(amount.toString())
-      expect(await token1.balanceOf(owner.address)).to.equal(amount.toString())
-      //Call borrow
-      liquidity_ = 10000000000
-      await kommodo.connect(owner).open(
-        tickLower,                          //tick lower borrow
-        slot0.tick + spacing,               //tick lower collateral
-        liquidity_,                         //liquidity borrow
-        0,                                  //min amountA borrow
-        0,                                  //min amountB borrow
-        5003502,                            //amountA collateral
-        0,                                  //amountB collateral
-        liquidity_ / 1000 + 10              //interest deduction/deposit
-      )
-      //Check after borrow balance
-      expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
-      expect(await token1.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
-      //Check locked 
-      liquidity = await kommodo.liquidity(tickLower)
-      expect(liquidity.locked).to.equal("9989999990")
-      //Check collateral stored
-      collateral = await kommodo.collateral(slot0.tick + spacing)
-      expect(collateral.collateralId).to.equal("2")
-      expect(collateral.amount).to.equal("10015012305")     
-      //Check borrow stored
-      let key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
-      borrower = await kommodo.borrower(key)
-      expect(borrower.liquidity).to.equal("10000000000")
-      expect(borrower.liquidityCol).to.equal(collateral.amount)
-      expect(borrower.interest).to.equal("10000010")
-      expect(borrower.start).to.not.equal(0)
+      balance0Before = await tokenA.balanceOf(account1.address)
+      balance1Before = await weth.balanceOf(account1.address)
+      expect(balance0Before).to.equal(amount.toString())
+      expect(balance1Before).to.equal(amount.toString())
+      //Open borrow position using connector
+      liquidityBor = await kommodo.availableLiquidity(ticklower + 887272)
+      start = (await ethers.provider.getBlock('latest')).timestamp
+      interest = await kommodo.getInterest(ticklower, slot0.tick - 2 * spacing, liquidity, start, start + 60)
+      fee = await kommodo.getFee(liquidity)
+      tickCol = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
+      await kommodo.connect(account1).open({
+        tickLowerBor: ticklower, 
+        tickLowerCol: tickCol, 
+        liquidityBor: liquidityBor, 
+        borAMin: 0,
+        borBMin: 0, 
+        colA: 0, 
+        colB: 100, 
+        interest: interest
+      })
+      //Checks
+      expect(await tokenA.balanceOf(account1.address)).to.equal(balance0Before.add("49"))
+      expect(await weth.balanceOf(account1.address)).to.equal(balance1Before.sub("100"))
+      totalLiquidity = await kommodo.liquidity(ticklower)
+      expect(totalLiquidity.locked).to.equal(liquidity.toString())
+      collateral = await kommodo.collateral(tickCol)
+      expect(collateral).to.equal("200160")   
+      borrowKey = await kommodo.getKey(account1.address, ticklower, tickCol)
+      borrower = await kommodo.borrower(borrowKey)
+      expect(borrower.liquidityBor).to.equal("100130")
+      expect(borrower.liquidityCol).to.equal("200160")
+      expect(borrower.interest).to.equal(interest)
+      expect(borrower.fee).to.equal(fee)
+      expect(borrower.start).to.equal((await ethers.provider.getBlock('latest')).timestamp)
+    })
+    it('Should [partial]close loan', async function () {           
+      //Check after borrow balance      
+      expect(await tokenA.balanceOf(account1.address)).to.equal(amount.plus("49").toString())
+      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("100").toString())
+      //Close borrow position using connector  
+      pre_borrower = await kommodo.borrower(borrowKey)
+      await kommodo.connect(account1).close({
+        tickLowerBor: ticklower, 
+        tickLowerCol: tickCol, 
+        liquidityBor: pre_borrower.liquidityBor.div(2), 
+        liquidityCol: 0, 
+        interest: 0,
+        owner: account1.address
+      })  
+      //Checks   
+      expect(await tokenA.balanceOf(account1.address)).to.equal(amount.plus("24").toString())
+      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("100").toString()) 
+      post_borrower = await kommodo.borrower(borrowKey)
+      expect(post_borrower.liquidityBor).to.equal(pre_borrower.liquidityBor.div(2))
+      expect(post_borrower.liquidityCol).to.equal(pre_borrower.liquidityCol)
+      expect(post_borrower.interest).to.equal(pre_borrower.interest)
+      expect(post_borrower.fee).to.equal(pre_borrower.fee)
+      expect(post_borrower.start).to.equal((await ethers.provider.getBlock('latest')).timestamp)
+    })
+    it('Should [full]close loan', async function () {
+      //Close borrow position using connector
+      borrowKey = await kommodo.getKey(account1.address, ticklower, tickCol)
+      borrower_before = await kommodo.borrower(borrowKey)
+      total_liquidity_before = await kommodo.liquidity(ticklower)
+      await kommodo.connect(account1).close({
+        tickLowerBor: ticklower, 
+        tickLowerCol: tickCol, 
+        liquidityBor: borrower_before.liquidityBor, 
+        liquidityCol: borrower_before.liquidityCol, 
+        interest: borrower_before.interest,
+        owner: account1.address
+      })
+      //Checks
+      borrower_after = await kommodo.borrower(borrowKey)
+      available_liquidity = await kommodo.availableLiquidity(ticklower + 887272)
+      total_liquidity_after = await kommodo.liquidity(ticklower)
+      //Difference in tokenA balance is rounding (1) and fee (1) and weth is rounding (1)
+      expect(await tokenA.balanceOf(account1.address)).to.equal(amount.minus("2").toString())
+      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("1").toString()) 
+      expect(borrower_after.liquidityBor).to.equal("0")
+      expect(borrower_after.liquidityCol).to.equal("0")
+      expect(borrower_after.interest).to.equal("0")
+      expect(borrower_after.fee).to.equal("0")
+      expect(borrower_after.start).to.equal("0")
+      expect(available_liquidity).to.equal(total_liquidity_after.liquidity)
+      expect(total_liquidity_after.liquidity).to.equal(total_liquidity_before.liquidity.add(borrower_before.fee))
     }) 
-    it('Should close borrow from pool', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-      //Get amount
-      let base = new bn(10)
-      let amount = base.pow("18")
-      //Get close() required data
-      let slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-      let tickLower = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
-      //Sort tokens
-      let token0
-      let token1
-      if(tokenA.address < weth.address) {
-        token0 = tokenA
-        token1 = weth
-      } else {
-        token0 = weth;
-        token1 = tokenA
-      }
-      //Approve borrowed amount
-      await tokenA.connect(owner).approve(kommodo.address, "4996002")
-      //Check after borrow balance
-      expect(await token1.balanceOf(owner.address)).to.equal((amount.plus("4991005")).toString())
-      expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("5003502")).toString())
-      //Call close
-      key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
-      borrower = await kommodo.borrower(key)
-      await kommodo.connect(owner).close(tickLower, slot0.tick + spacing, owner.address, borrower.liquidity, borrower.liquidityCol)
-      //Check return balance (some interest payed) and minus 1 for rounding LP
-      expect(await token1.balanceOf(owner.address)).to.equal((amount.minus("4997")).toString())
-      expect(await token0.balanceOf(owner.address)).to.equal((amount.minus("1")).toString())
-      //Check locked 
-      liquidity = await kommodo.liquidity(tickLower)
-      expect(liquidity.locked).to.equal(0)
-      //Check collateral stored
-      collateral = await kommodo.collateral(slot0.tick + spacing)
-      expect(collateral.collateralId).to.equal("2")
-      expect(collateral.amount).to.equal(0) 
-      //Check borrow stored
-      key = await kommodo.getKey(owner.address, tickLower, slot0.tick + spacing)
-      borrower = await kommodo.borrower(key)
-      expect(borrower.liquidity).to.equal(0)
-      expect(borrower.liquidityCol).to.equal(0)
-      expect(borrower.interest).to.equal(0)
-      expect(borrower.start).to.equal(0)
-
+  })
+  describe("Kommodo_test_unhappy_update", function () {      
+    //Provide()
+    it('Should fail provide for zero amountA and amountB', async function () {
+      //Fail provide() zero amount -> fails in connector call pool.mint(), zero liquidity
+      await expect(kommodo.connect(account2).provide(ticklower, 0, 0)).to.be.reverted
     })
-    it('Kommodo tests after swaps', async function () {
-      const [owner, signer2] = await ethers.getSigners();
-      //Get amount
-      let base = new bn(10)
-      let amount = base.pow("18").multipliedBy("3")
-      //Get data provide
-      slot0 = await pool.slot0()
-      let spacing = await pool.tickSpacing()
-      //deposit liquidity @slot0.tick
-      await tokenA.connect(signer2).mint(amount.toString())
-      await weth.connect(signer2).deposit({value: amount.toString()})
-      await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
-		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-      await kommodo.connect(signer2).provide(slot0.tick - spacing * 2, amount.div("2").toString(), amount.div("2").toString(), { gasLimit: '1000000' })
-      //check before price and tick
-      tick = await pool.connect(signer2).ticks(slot0.tick - spacing * 2)
-        //console.log(slot0)
-        //console.log(tick)
-      //deposit funds for swap in tick
-      await tokenA.connect(signer2).mint(amount.toString())
-      await weth.connect(signer2).deposit({value: amount.toString()})
-      await tokenA.connect(signer2).transfer(mockRouter.address, amount.toString())
-      await weth.connect(signer2).transfer(mockRouter.address, amount.toString())
-      //initialize mock router
-      let tokenAdress0
-      let tokenAdress1
-      let sqrtPrice
-      let zeroOne
-      if(tokenA.address < weth.address) {
-        tokenAdress0 = tokenA.address;
-        tokenAdress1 = weth.address
-        sqrtPrice = encodePriceSqrt(2,1)
-        zeroOne = false
-      } else {
-        tokenAdress0 = weth.address;
-        tokenAdress1 = tokenA.address
-        sqrtPrice = encodePriceSqrt(1,2)
-        zeroOne = true
-      }
-      await mockRouter.connect(signer2).initialize(pool.address, tokenAdress0, tokenAdress1) 
-      //call swap from router
-      await mockRouter.connect(signer2).swap(signer2.address, zeroOne, 100000000000, sqrtPrice, "0x")
-      position = await nonfungiblePositionManager.positions(1)
-        //console.log(position)          
-      //Update positions
-      await kommodo.connect(signer2).provide(-20, amount.div("2").toString(), amount.div("2").toString(), { gasLimit: '1000000' })
-      //Check position update
-      position = await nonfungiblePositionManager.positions(1)
-        //console.log(position)
-      //check new price and tick
-      slot0 = await pool.slot0()
-      tick = await pool.connect(signer2).ticks(slot0.tick - spacing * 2)
-        //console.log(slot0)  
-        //console.log(tick)
-    })
+    it('Should fail provide if pool does not exist', async function () {
+      //Deploy kommodo for non existing AMM pool
+      await kommodoFactory.connect(account1).createKommodo(
+        "0x0000000000000000000000000000000000000001",
+        "0x0000000000000000000000000000000000000002",
+        {gasLimit: 5000000}
+      )
+      let KommodoNAMM = await kommodoFactory.kommodo("0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000002")
+      kommodoNAMM = new Contract(KommodoNAMM, artifacts.Kommodo.abi, provider)
+      //Check kommodo exists and no AMM pool exists
+      expect(KommodoNAMM).to.not.equal("0x0000000000000000000000000000000000000000")
+      expect(await factory.getPool("0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000002", 500)).to.equal("0x0000000000000000000000000000000000000000") 
+      //Fail provide() no AMM pool -> fails in connector call pool.slot0(), no deployed contract
+      await expect(kommodoNAMM.connect(account2).provide(ticklower, 100, 0)).to.be.reverted
+    }) 
+    it('Should fail provide if ticklower >= tickmax', async function () {
+      //AMM set max tick rounded per 10 because of spacing
+      MAX_TICK = 887272 - 2
+      //Fail provide() ticklower >= tickmax -> fails in connector call TickMath.getSqrtRatioAtTick(tickUpper), above tickmax 
+      await expect(kommodo.connect(account2).provide(MAX_TICK, 100, 0)).to.be.reverted
+    }) 
+    it('Should fail provide for insufficient funds', async function () {
+      //Get total balance and add 1
+      let amountA = (await tokenA.balanceOf(account2.address)).add("1")
+      await tokenA.connect(account2).approve(kommodo.address, amount.toString())
+      //Fail provide() insufficient funds -> fails in connector call TransferHelper.safeTransferFrom, error STF
+      await expect(kommodo.connect(account2).provide(ticklower, amountA, 0)).to.be.revertedWith("STF")
+    }) 
+    it('Should fail take not the owner', async function () {
+      //add further unhappy tests
+    }) 
   }) 
 })
-
-
