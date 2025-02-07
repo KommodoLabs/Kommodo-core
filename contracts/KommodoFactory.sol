@@ -1,44 +1,54 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity =0.8.19;
 
-import './interfaces/INonfungiblePositionManager.sol';
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
+import './interfaces/IKommodo.sol';
 import './Kommodo.sol';
 
 contract KommodoFactory {
-    //AMM variables
-    address public factory;
-    uint24 public poolFee;
-    int24 public poolSpacing;
     
-    //Lending pool variables
-    uint128 public fee;
-    uint128 public interest;
-    uint128 public margin;
+    address public factory;
+    uint128 public multiplier;
+    uint256 public delay;
     
     mapping(address => mapping(address => address)) public kommodo;
     address[] public allKommodo;
     
-    constructor(address _factory, uint24 _poolFee, int24 _poolSpacing, uint128 _fee, uint128 _interest, uint128 _margin) {
-        require(_margin > 0, "false margin");
+    constructor(
+        address _factory, 
+        uint128 _multiplier, 
+        uint256 _delay
+    ) {
         factory = _factory;
-        poolFee = _poolFee;
-        poolSpacing = _poolSpacing;
-
-        fee = _fee;
-        interest = _interest;
-        margin = _margin;
+        multiplier = _multiplier;
+        delay = _delay;
     }
 
     function allKommodoLength() external view returns (uint) {
         return allKommodo.length;
     }
 
-    function createKommodo(address assetA, address assetB) public returns (address) {
+    function createKommodo(
+        address assetA, 
+        address assetB, 
+        uint24 poolFee
+    ) public returns (address) {
         require(assetA != assetB, "create: identical assets");
         (address token0, address token1) = assetA < assetB ? (assetA, assetB) : (assetB, assetA);
         require(token0 != address(0), 'create: no address zero');
         require(kommodo[assetA][assetB] == address(0), "create: existing pool");
-        Kommodo _kommodo = new Kommodo(factory, token0, token1, poolSpacing, poolFee, fee, interest, margin);
+        int24 tickSpacing = IUniswapV3Factory(factory).feeAmountTickSpacing(poolFee);
+        require(tickSpacing != 0, "constructor: invalid poolFee");
+        Kommodo _kommodo = new Kommodo(
+            IKommodo.CreateParams({
+            factory: factory,
+            tokenA: token0, 
+            tokenB: token1,
+            tickSpacing: tickSpacing, 
+            fee: poolFee,
+            multiplier: multiplier, 
+            delay: delay  
+        }));
         kommodo[assetA][assetB] = address(_kommodo);
         kommodo[assetB][assetA] = address(_kommodo);
         allKommodo.push(address(_kommodo));

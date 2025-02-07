@@ -130,12 +130,13 @@ describe("Kommodo_gas", function () {
       //console.log('mockRouter', mockRouter.address)      
     //Deploy kommodo
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
-    kommodoFactory = await KommodoFactory.deploy(factory.address, 500, 10, 100, 1, 100)
+    kommodoFactory = await KommodoFactory.deploy(factory.address, 5, 1)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
     await kommodoFactory.connect(owner).createKommodo(
       tokenAdress0,
       tokenAdress1,
+      500,
       {gasLimit: 5000000}
     )
     const kommodoAddress = await kommodoFactory.connect(owner).kommodo(
@@ -150,7 +151,7 @@ describe("Kommodo_gas", function () {
       //console.log('kommodo', kommodo.address)
 	})
   describe("Kommodo_gas", function () {
-    it('Kommodo gas analyses', async function () {    
+    it('Kommodo gas analyses', async function () {          
       const [owner, signer2] = await ethers.getSigners()
       let base = new bn(10)
       let amount = base.pow("18")
@@ -175,97 +176,136 @@ describe("Kommodo_gas", function () {
           sqrtPrice,
           {gasLimit: 5000000}
       )
-      gasCreate = await kommodoFactory.connect(owner).estimateGas.createKommodo(tokenAdress0, tokenAdress1, {gasLimit: 5000000})
+      gasCreate = await kommodoFactory.connect(owner).estimateGas.createKommodo(tokenAdress0, tokenAdress1, 500, {gasLimit: 5000000})
       console.log("Create: ", gasCreate.toString());
       //Provide estimate first
       await tokenA.connect(signer2).mint(amount.toString())
       await weth.connect(signer2).deposit({value: amount.toString()})
       await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
 		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
-      gasProvide = await kommodo.connect(signer2).estimateGas.provide(tickLower, deposit, deposit, { gasLimit: '1000000' })
+      gasProvide = await kommodo.connect(signer2).estimateGas.provide(
+        {
+          tickLower: tickLower,                           
+          amountA: deposit,                   
+          amountB: deposit                                 
+        }, 
+        { gasLimit: '1000000' })
       console.log("Povide mint AMM: ", gasProvide.toString());
-      await kommodo.connect(signer2).provide(tickLower, deposit, deposit, { gasLimit: '1000000' })
-      gasProvide = await kommodo.connect(signer2).estimateGas.provide(tickLower, deposit, deposit, { gasLimit: '1000000' })
-      console.log("Povide add AMM: ", gasProvide.toString());
+      await kommodo.connect(signer2).provide(
+        {
+          tickLower: tickLower,                           
+          amountA: deposit,                   
+          amountB: deposit                                  
+        }, 
+        { gasLimit: '1000000' })
+      gasProvide = await kommodo.connect(signer2).estimateGas.provide(
+        {
+          tickLower: tickLower,                           
+          amountA: deposit,                   
+          amountB: deposit                                  
+        },
+        { gasLimit: '1000000' })
+      console.log("Povide add AMM: ", gasProvide.toString());          
       //Take estimate
-      let share = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).div(2)
-      gasTake = await kommodo.connect(signer2).estimateGas.take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      let liquidity = (await kommodo.connect(signer2).lender(tickLower, signer2.address)).liquidity.div(2)
+      gasTake = await kommodo.connect(signer2).estimateGas.take(
+        {
+        tickLower: tickLower,
+        liquidity: liquidity,
+        amountMinA: 0,
+        amountMinB: 0 
+        },
+        { gasLimit: '1000000' })
       console.log("Take: ", gasTake.toString());      
       //Withdraw estimate
-      await kommodo.connect(signer2).take(tickLower, signer2.address, share, 0, 0,{ gasLimit: '1000000' })
+      await kommodo.connect(signer2).take(
+        {
+          tickLower: tickLower,
+          liquidity: liquidity,
+          amountMinA: 0,
+          amountMinB: 0 
+          },
+        { gasLimit: '1000000' })
       gasWithdraw = await kommodo.connect(signer2).estimateGas.withdraw(tickLower)
-      console.log("Withdraw: ", gasWithdraw.toString());
+      console.log("Withdraw: ", gasWithdraw.toString()); 
       //Borrow estimate
       await tokenA.connect(owner).mint(amount.toString())
       await weth.connect(owner).deposit({value: amount.toString()})
       await tokenA.connect(owner).approve(kommodo.address, amount.toString())
 		  await weth.connect(owner).approve(kommodo.address, amount.toString()) 
-      liquidityBor = await kommodo.availableLiquidity(tickLower + 887272)
+      assets = await kommodo.assets(tickLower)
+      liquidityBor = assets.liquidity - assets.locked
       tickCol = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
       start = (await ethers.provider.getBlock('latest')).timestamp
-      interest = await kommodo.getInterest(tickLower, slot0.tick - 2 * spacing, liquidityBor, start, start + 60)
+      interest = await kommodo.getInterest(liquidityBor, start, start + 60)
       gasBorrow = await kommodo.connect(owner).estimateGas.open({
-        tickLowerBor: tickLower,              //tick lower borrow
-        tickLowerCol: tickCol,                //tick lower collateral
-        liquidityBor: liquidityBor,           //liquidity borrow
-        borAMin: 0,                           //min amountA borrow
-        borBMin: 0,                           //min amountB borrow
-        colA: 0,                              //amountA collateral
-        colB: 100,                            //amountB collateral
-        interest: interest                    //interest deduction/deposit
-      })    
+        tickBor: tickLower,                           //tick lower borrow
+        liquidityBor: liquidityBor,                   //liquidity borrow
+        borAMin: 0,                                   //min amountA borrow
+        borBMin: 0,                                   //min amountB borrow
+        colA: 0,                                      //amountA collateral
+        colB: 10000,                                    //amountB collateral
+        interest: interest                            //interest deposit
+      })
       console.log("Borrow mint AMM: ", gasBorrow.toString());    
       await kommodo.connect(owner).open({
-        tickLowerBor: tickLower,              //tick lower borrow
-        tickLowerCol: tickCol,                //tick lower collateral
-        liquidityBor: liquidityBor,           //liquidity borrow
-        borAMin: 0,                           //min amountA borrow
-        borBMin: 0,                           //min amountB borrow
-        colA: 0,                              //amountA collateral
-        colB: 100,                            //amountB collateral
-        interest: interest                    //interest deduction/deposit
+        tickBor: tickLower,                           //tick lower borrow
+        liquidityBor: liquidityBor,                   //liquidity borrow
+        borAMin: 0,                                   //min amountA borrow
+        borBMin: 0,                                   //min amountB borrow
+        colA: 0,                                      //amountA collateral
+        colB: 10000,                                    //amountB collateral
+        interest: interest                            //interest deposit  
       })
-      key = await kommodo.getKey(owner.address, tickLower, tickCol)
+      key = await kommodo.getKey(owner.address, tickLower, false)
       borrower_before = await kommodo.borrower(key)
       await kommodo.connect(owner).close({
-        tickLowerBor: tickLower, 
-        tickLowerCol: tickCol, 
-        liquidityBor: borrower_before.liquidityBor, 
-        liquidityCol: borrower_before.liquidityCol, 
-        interest: borrower_before.interest,
-        owner: owner.address
+        token0: false,                                //tokenA as collateral
+        owner: owner.address,                         //owner loan
+        tickBor: tickLower,                           //tick lower borrow
+        liquidityBor: borrower_before.liquidityBor,   //liquidity borrow
+        amountCol: borrower_before.amountCol,         //amount collateral
+        interest: borrower_before.interest            //interest deduction 
       })
       gasBorrow = await kommodo.connect(owner).estimateGas.open({
-        tickLowerBor: tickLower,                      //tick lower borrow
-        tickLowerCol: tickCol,                        //tick lower collateral
-        liquidityBor: borrower_before.liquidityBor,   //liquidity borrow
+        tickBor: tickLower,                           //tick lower borrow
+        liquidityBor: liquidityBor,                   //liquidity borrow
         borAMin: 0,                                   //min amountA borrow
         borBMin: 0,                                   //min amountB borrow
         colA: 0,                                      //amountA collateral
-        colB: 100,                                    //amountB collateral
-        interest: interest                            //interest deduction/deposit
+        colB: 10000,                                    //amountB collateral
+        interest: interest                            //interest deposit  
       })
-      console.log("Borrow add AMM: ", gasBorrow.toString())
+      console.log("Borrow add AMM: ", gasBorrow.toString())   
       await kommodo.connect(owner).open({
-        tickLowerBor: tickLower,                      //tick lower borrow
-        tickLowerCol: tickCol,                        //tick lower collateral
-        liquidityBor: borrower_before.liquidityBor,   //liquidity borrow
+       tickBor: tickLower,                            //tick lower borrow
+        liquidityBor: liquidityBor,                   //liquidity borrow
         borAMin: 0,                                   //min amountA borrow
         borBMin: 0,                                   //min amountB borrow
         colA: 0,                                      //amountA collateral
-        colB: 100,                                    //amountB collateral
-        interest: interest                            //interest deduction/deposit
+        colB: 10000,                                    //amountB collateral
+        interest: interest                            //interest deposit  
       })
-      //Close estimate
-      gasClose = await kommodo.connect(owner).estimateGas.close({
-        tickLowerBor: tickLower, 
-        tickLowerCol: tickCol, 
-        liquidityBor: borrower_before.liquidityBor, 
-        liquidityCol: borrower_before.liquidityCol, 
-        interest: borrower_before.interest,
-        owner: owner.address
+      //Partial Close estimate
+      gasPartialClose = await kommodo.connect(owner).estimateGas.close({
+        token0: false,                                //tokenA as collateral
+        owner: owner.address,                         //owner loan
+        tickBor: tickLower,                           //tick lower borrow
+        liquidityBor: 1,                  //liquidity borrow
+        amountCol: 0,         //amount collateral
+        interest: 0            //interest deduction 
       })
-      console.log("Close: ", gasClose.toString())
+      console.log("[Partial]Close: ", gasPartialClose.toString())
+      //Full close estimate
+      gasFullClose = await kommodo.connect(owner).estimateGas.close({
+        token0: false,                                //tokenA as collateral
+        owner: owner.address,                         //owner loan
+        tickBor: tickLower,                           //tick lower borrow
+        liquidityBor: borrower_before.liquidityBor,   //liquidity borrow
+        amountCol: borrower_before.amountCol,         //amount collateral
+        interest: borrower_before.interest            //interest deduction 
+      })
+      console.log("[Full]Close: ", gasFullClose.toString())
     })
   })
 })

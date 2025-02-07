@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity =0.8.19;
 
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3MintCallback.sol';
+import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import '@uniswap/v3-periphery/contracts/libraries/PositionKey.sol';
 
-import './libraries/PoolAddress.sol';
 import './libraries/TickMath.sol';
+import './libraries/PoolAddress.sol';
+import './libraries/SqrtPriceMath.sol'; 
 import './libraries/LiquidityAmounts.sol';
 import './libraries/CallbackValidation.sol';
 
@@ -108,7 +112,7 @@ abstract contract Connector is IUniswapV3MintCallback {
         (amount0, amount1) = pool.burn(tickLower, tickUpper, liquidity);
     }
 
-    function collectLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
+    function collectLiquidity(address tokenA, address tokenB, address receiver, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
         public 
         returns(
             uint256 amount0,
@@ -119,12 +123,26 @@ abstract contract Connector is IUniswapV3MintCallback {
         PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({token0: tokenA, token1: tokenB, fee: poolFee});
         pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
         (amount0, amount1) = pool.collect(
-            msg.sender,
+            receiver,
             tickLower,
             tickUpper,
             amountA,
             amountB
         );
+    }
+ 
+    function tokensOwed(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper) 
+        public
+        view
+        returns(
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) 
+    {
+        PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({token0: tokenA, token1: tokenB, fee: poolFee});
+        IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+        bytes32 positionKey = PositionKey.compute(address(this), tickLower, tickUpper);
+        (, , , tokensOwed0, tokensOwed1) = pool.positions(positionKey);
     }
 }
 

@@ -10,17 +10,14 @@ interface IKommodo {
         address indexed owner,
         int24 indexed tickLower,
         uint128 liquidity,
-        uint128 shares,
         uint128 amountA,
         uint128 amountB
     );
 
     event Take(
         address indexed owner,
-        address indexed receiver,
         int24 indexed tickLower,
         uint128 liquidity,
-        uint128 shares,
         uint256 amountA,
         uint256 amountB
     );
@@ -33,41 +30,69 @@ interface IKommodo {
     );
 
     event Open(
+        bool indexed token0,
         address indexed owner,
-        int24 indexed tickLowerCol,
-        int24 indexed tickLowerBor,
-        uint128 liquidityCol,
+        int24 indexed tickBor,
         uint128 liquidityBor,
-        uint256 amountA,
-        uint256 amountB
+        uint256 borA,
+        uint256 borB,
+        uint128 amountCol
     );
 
     event Close(
         address sender,
+        bool indexed token0,
         address indexed owner,
-        int24 indexed tickLowerCol,
-        int24 indexed tickLowerBor,
-        uint128 liquidityCol,
+        int24 indexed tickBor,
         uint128 liquidityBor,
-        uint256 amountA,
-        uint256 amountB
+        uint256 borA,
+        uint256 borB,
+        uint256 amountCol
     );
 
     event FullClose(
+        bool indexed token0,
         address indexed owner,
-        int24 indexed tickLowerCol,
-        int24 indexed tickLowerBor
+        int24 indexed tickBor
     );
 
     event PartialClose(
+        bool indexed token0,
         address indexed owner,
-        int24 indexed tickLowerCol,
-        int24 indexed tickLowerBor
+        int24 indexed tickBor   
     );
 
+    struct CreateParams { 
+        address factory; 
+        address tokenA; 
+        address tokenB; 
+        int24 tickSpacing; 
+        uint24 fee; 
+        uint128 multiplier; 
+        uint256 delay;  
+    } 
+
+    struct ProvideParams { 
+        int24 tickLower; 
+        uint128 amountA; 
+        uint128 amountB;      
+    } 
+
+    function provide(ProvideParams calldata params)
+        external;
+
+    struct TakeParams { 
+        int24 tickLower;
+        uint128 liquidity; 
+        uint128 amountMinA; 
+        uint128 amountMinB;   
+    } 
+
+    function take(TakeParams calldata params)
+        external;
+
     struct OpenParams { 
-        int24 tickLowerBor; 
-        int24 tickLowerCol; 
+        int24 tickBor; 
         uint128 liquidityBor;
         uint128 borAMin;
         uint128 borBMin; 
@@ -79,13 +104,13 @@ interface IKommodo {
     function open(OpenParams calldata params)
         external;
 
-    struct CloseParams { 
-        int24 tickLowerBor; 
-        int24 tickLowerCol; 
+    struct CloseParams {
+        bool token0;
+        address owner;  
+        int24 tickBor; 
         uint128 liquidityBor;
-        uint128 liquidityCol;
+        uint128 amountCol;
         uint128 interest; 
-        address owner; 
     } 
 
     function close(CloseParams calldata params)
