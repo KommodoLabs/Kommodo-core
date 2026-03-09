@@ -1,12 +1,34 @@
-
 # Kommodo-core
-Kommodo core contracts.
+Kommodo core smart contracts.
 
 ## Install Dependencies
-`npm i`
+```
+npm i
+forge install foundry-rs/forge-std
+uv tool install --python 3.12 halmos
+```
 
 ## Compile
-`npx hardhat compile`
+```
+npm run compile
+```
 
-## Run tests
-`npx hardhat test`
+## Security
+
+### Tests
+```
+npm run test
+```
+
+### Fuzz test
+```
+npm run fuzz
+```
+
+### Formal test
+```
+npm run formal
+```
+
+### AI analyses
+Check [reports](test_other/audit_check).

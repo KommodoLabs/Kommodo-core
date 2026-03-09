@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "start-node": "npx hardhat node",
+    "fuzz-node": "wait-on tcp:127.0.0.1:8545 && npx hardhat run scripts/deployFactoryTest.js --network localhost && forge test --fork-url http://127.0.0.1:8545",
+    "fuzz": "concurrently --names \"start-node,fuzz-node\" --hide \"start-node\" \"npm run start-node\" \"npm run fuzz-node\"",
+    "formal": "halmos"
   },
   "license": "GPLv3",
   "dependencies": {
@@ -19,9 +23,12 @@
     "chai": "^4.3.10",
     "ethereum-waffle": "^4.0.10",
     "hardhat": "^2.17.3",
-    "hardhat-contract-sizer": "^2.10.0"
+    "hardhat-contract-sizer": "^2.10.0",
+    "wait-on": "^9.0.4"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.1.2",
+    "concurrently": "^9.2.1",
     "mocha": "^10.2.0"
   }
 }

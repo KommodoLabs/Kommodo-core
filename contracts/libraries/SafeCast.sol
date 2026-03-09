@@ -85,4 +85,16 @@ library SafeCast {
         return uint256(value);
     }
 
+    /**
+     * @dev Converts a signed int128 into an unsigned uint128.
+     *
+     * Requirements:
+     *
+     * - input must be greater than or equal to 0.
+     */
+    function toUint128(int128 value) internal pure returns (uint128) {
+        require(value >= 0, "SafeCast: value must be positive");
+        return uint128(value);
+    }
+
 }

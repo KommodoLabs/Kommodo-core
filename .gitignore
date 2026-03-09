@@ -1,5 +1,16 @@
-node_modules/
+.env
+
+/node_modules
+/dist
+/bundle
+/artifacts
+/cache
+/types
+/coverage
+/lib
+/out
 build/
 artifacts/
 cache/
 .DS_Store
+/skills

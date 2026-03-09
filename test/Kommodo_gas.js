@@ -11,6 +11,7 @@ const artifacts = {
     WETH9: require("./WETH9.json"),
     KommodoFactory: require("../artifacts/contracts/KommodoFactory.sol/KommodoFactory.json"),
     Kommodo: require("../artifacts/contracts/Kommodo.sol/Kommodo.json"),
+    NonfungibleLendManager: require("../artifacts/contracts/NonfungibleLendManager.sol/NonfungibleLendManager.json"),
 };
 const UniswapV3Pool = require("@uniswap/v3-core/artifacts/contracts/UniswapV3Pool.sol/UniswapV3Pool.json")
 const { nearestUsableTick } = require('@uniswap/v3-sdk')
@@ -81,7 +82,7 @@ describe("Kommodo_gas", function () {
                     NFTDescriptor: [
                         {
                             length: 20,
-                            start: 1261,
+                            start: 1681,
                         },
                     ],
                 },
@@ -92,7 +93,7 @@ describe("Kommodo_gas", function () {
         }
     )
     NonfungibleTokenPositionDescriptor = new ContractFactory(artifacts.NonfungibleTokenPositionDescriptor.abi, linkedBytecode, owner)
-    nonfungibleTokenPositionDescriptor = await NonfungibleTokenPositionDescriptor.deploy(weth.address)
+    nonfungibleTokenPositionDescriptor = await NonfungibleTokenPositionDescriptor.deploy(weth.address, '0x4554480000000000000000000000000000000000000000000000000000000000')
       //console.log('nonfungibleTokenPositionDescriptor', nonfungibleTokenPositionDescriptor.address)
     NonfungiblePositionManager = new ContractFactory(artifacts.NonfungiblePositionManager.abi, artifacts.NonfungiblePositionManager.bytecode, owner)
     nonfungiblePositionManager = await NonfungiblePositionManager.deploy(factory.address, weth.address, nonfungibleTokenPositionDescriptor.address)
@@ -128,9 +129,9 @@ describe("Kommodo_gas", function () {
     MockRouter = await ethers.getContractFactory('Router', owner)
     mockRouter = await MockRouter.deploy()
       //console.log('mockRouter', mockRouter.address)      
-    //Deploy kommodo
+    //Deploy kommodofactory
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
-    kommodoFactory = await KommodoFactory.deploy(factory.address, 5, 1)
+    kommodoFactory = await KommodoFactory.deploy(factory.address, 5)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
     await kommodoFactory.connect(owner).createKommodo(
@@ -141,7 +142,8 @@ describe("Kommodo_gas", function () {
     )
     const kommodoAddress = await kommodoFactory.connect(owner).kommodo(
       tokenAdress0,
-      tokenAdress1
+      tokenAdress1,
+      500
     )
     kommodo = new Contract(
         kommodoAddress,
@@ -149,6 +151,10 @@ describe("Kommodo_gas", function () {
         provider
     )
       //console.log('kommodo', kommodo.address)
+    //Deploy nonfungibleLendManager 
+    NonfungibleLendManager = new ContractFactory(artifacts.NonfungibleLendManager.abi, artifacts.NonfungibleLendManager.bytecode, owner)
+    nonfungibleLendManager = await NonfungibleLendManager.deploy(kommodoFactory.address)
+      //console.log('nonfungibleLendManager', nonfungibleLendManager.address)
 	})
   describe("Kommodo_gas", function () {
     it('Kommodo gas analyses', async function () {          
@@ -178,7 +184,7 @@ describe("Kommodo_gas", function () {
       )
       gasCreate = await kommodoFactory.connect(owner).estimateGas.createKommodo(tokenAdress0, tokenAdress1, 500, {gasLimit: 5000000})
       console.log("Create: ", gasCreate.toString());
-      //Provide estimate first
+      //Provide estimates
       await tokenA.connect(signer2).mint(amount.toString())
       await weth.connect(signer2).deposit({value: amount.toString()})
       await tokenA.connect(signer2).approve(kommodo.address, amount.toString())
@@ -187,7 +193,8 @@ describe("Kommodo_gas", function () {
         {
           tickLower: tickLower,                           
           amountA: deposit,                   
-          amountB: deposit                                 
+          amountB: deposit,
+          sender: signer2.address
         }, 
         { gasLimit: '1000000' })
       console.log("Povide mint AMM: ", gasProvide.toString());
@@ -195,14 +202,16 @@ describe("Kommodo_gas", function () {
         {
           tickLower: tickLower,                           
           amountA: deposit,                   
-          amountB: deposit                                  
+          amountB: deposit,
+          sender: signer2.address
         }, 
         { gasLimit: '1000000' })
       gasProvide = await kommodo.connect(signer2).estimateGas.provide(
         {
           tickLower: tickLower,                           
           amountA: deposit,                   
-          amountB: deposit                                  
+          amountB: deposit,
+          sender: signer2.address                               
         },
         { gasLimit: '1000000' })
       console.log("Povide add AMM: ", gasProvide.toString());          
@@ -216,7 +225,7 @@ describe("Kommodo_gas", function () {
         amountMinB: 0 
         },
         { gasLimit: '1000000' })
-      console.log("Take: ", gasTake.toString());      
+      console.log("Take: ", gasTake.toString());         
       //Withdraw estimate
       await kommodo.connect(signer2).take(
         {
@@ -226,7 +235,7 @@ describe("Kommodo_gas", function () {
           amountMinB: 0 
           },
         { gasLimit: '1000000' })
-      gasWithdraw = await kommodo.connect(signer2).estimateGas.withdraw(tickLower)
+      gasWithdraw = await kommodo.connect(signer2).estimateGas.withdraw(tickLower, signer2.address, 100, 100)
       console.log("Withdraw: ", gasWithdraw.toString()); 
       //Borrow estimate
       await tokenA.connect(owner).mint(amount.toString())
@@ -237,75 +246,180 @@ describe("Kommodo_gas", function () {
       liquidityBor = assets.liquidity - assets.locked
       tickCol = nearestUsableTick(slot0.tick, spacing) - 2 * spacing
       start = (await ethers.provider.getBlock('latest')).timestamp
-      interest = await kommodo.getInterest(liquidityBor, start, start + 60)
+      interest = await kommodo.getInterest(liquidityBor, start, start + 60) + 10 //mimimum interest deposit of 1 + 10 for rounding
       gasBorrow = await kommodo.connect(owner).estimateGas.open({
+        token0: false,                                //collateral tokenA
         tickBor: tickLower,                           //tick lower borrow
         liquidityBor: liquidityBor,                   //liquidity borrow
         borAMin: 0,                                   //min amountA borrow
         borBMin: 0,                                   //min amountB borrow
-        colA: 0,                                      //amountA collateral
-        colB: 10000,                                    //amountB collateral
+        colAmount: 10000,                             //amount collateral
         interest: interest                            //interest deposit
       })
       console.log("Borrow mint AMM: ", gasBorrow.toString());    
       await kommodo.connect(owner).open({
+        token0: false,                                //collateral tokenA
         tickBor: tickLower,                           //tick lower borrow
         liquidityBor: liquidityBor,                   //liquidity borrow
         borAMin: 0,                                   //min amountA borrow
         borBMin: 0,                                   //min amountB borrow
-        colA: 0,                                      //amountA collateral
-        colB: 10000,                                    //amountB collateral
+        colAmount: 10000,                             //amount collateral
         interest: interest                            //interest deposit  
       })
       key = await kommodo.getKey(owner.address, tickLower, false)
       borrower_before = await kommodo.borrower(key)
+
       await kommodo.connect(owner).close({
-        token0: false,                                //tokenA as collateral
-        owner: owner.address,                         //owner loan
+        token0: false,                                //collateral tokenA
+        owner:  owner.address,                        //owner loan
         tickBor: tickLower,                           //tick lower borrow
-        liquidityBor: borrower_before.liquidityBor,   //liquidity borrow
-        amountCol: borrower_before.amountCol,         //amount collateral
-        interest: borrower_before.interest            //interest deduction 
+        borAMax: 1000000000,                          //max amountA return
+        borBMax: 1000000000,                          //max amountB return
       })
       gasBorrow = await kommodo.connect(owner).estimateGas.open({
+        token0: false,                                //collateral tokenA
         tickBor: tickLower,                           //tick lower borrow
         liquidityBor: liquidityBor,                   //liquidity borrow
         borAMin: 0,                                   //min amountA borrow
         borBMin: 0,                                   //min amountB borrow
-        colA: 0,                                      //amountA collateral
-        colB: 10000,                                    //amountB collateral
+        colAmount: 10000,                             //amount collateral
         interest: interest                            //interest deposit  
       })
       console.log("Borrow add AMM: ", gasBorrow.toString())   
       await kommodo.connect(owner).open({
-       tickBor: tickLower,                            //tick lower borrow
+        token0: false,                                //collateral tokenA
+        tickBor: tickLower,                           //tick lower borrow
         liquidityBor: liquidityBor,                   //liquidity borrow
         borAMin: 0,                                   //min amountA borrow
         borBMin: 0,                                   //min amountB borrow
-        colA: 0,                                      //amountA collateral
-        colB: 10000,                                    //amountB collateral
+        colAmount: 10000,                             //amount collateral
         interest: interest                            //interest deposit  
       })
+      //Interest adjust estimate
+      gasSetInterest = await kommodo.connect(owner).estimateGas.setInterest(
+        false,                                        //tokenA as collateral
+        tickLower,                                    //tick lower borrow
+        -1                                            //interest delta 
+      )
+      console.log("SetInterest: ", gasSetInterest.toString())
       //Partial Close estimate
-      gasPartialClose = await kommodo.connect(owner).estimateGas.close({
+      gasPartialClose = await kommodo.connect(owner).estimateGas.adjust({
         token0: false,                                //tokenA as collateral
-        owner: owner.address,                         //owner loan
         tickBor: tickLower,                           //tick lower borrow
-        liquidityBor: 1,                  //liquidity borrow
-        amountCol: 0,         //amount collateral
-        interest: 0            //interest deduction 
+        liquidityBor: 1,                              //liquidity borrow
+        borAMax: 10000000,                            //max amountA return
+        borBMax: 10000000,                            //max amountB return
+        amountCol: 0,                                 //amount collateral
+        interest: interest                            //new interest amount 
       })
       console.log("[Partial]Close: ", gasPartialClose.toString())
       //Full close estimate
       gasFullClose = await kommodo.connect(owner).estimateGas.close({
-        token0: false,                                //tokenA as collateral
-        owner: owner.address,                         //owner loan
+        token0: false,                                //collateral tokenA
+        owner:  owner.address,                        //owner loan
         tickBor: tickLower,                           //tick lower borrow
-        liquidityBor: borrower_before.liquidityBor,   //liquidity borrow
-        amountCol: borrower_before.amountCol,         //amount collateral
-        interest: borrower_before.interest            //interest deduction 
+        borAMax: 1000000000,                          //max amountA return
+        borBMax: 1000000000,                          //max amountB return
       })
       console.log("[Full]Close: ", gasFullClose.toString())
+      //Approve NFT estimate
+      await tokenA.connect(signer2).approve(nonfungibleLendManager.address, amount.toString())
+		  await weth.connect(signer2).approve(nonfungibleLendManager.address, amount.toString())   
+      gasApproveNFT = await nonfungibleLendManager.connect(signer2).estimateGas.poolApprove(
+          weth.address,
+          tokenA.address,
+          500
+      )
+      console.log("Approve NFT: ", gasApproveNFT.toString());
+      await nonfungibleLendManager.connect(signer2).poolApprove(
+          weth.address,
+          tokenA.address,
+          500
+      )
+      //Provide NFT estimates
+      gasMintNFT = await nonfungibleLendManager.connect(signer2).estimateGas.mint(
+        {
+          assetA: weth.address,
+          assetB: tokenA.address,
+          poolFee: 500,
+          tickLower: tickLower + 2*spacing,                           
+          amountA: deposit,                   
+          amountB: deposit                                 
+        }
+      )
+      console.log("Mint mint AMM NFT: ", gasMintNFT.toString());
+      await nonfungibleLendManager.connect(signer2).mint(
+        {
+          assetA: weth.address,
+          assetB: tokenA.address,
+          poolFee: 500,
+          tickLower: tickLower + 2*spacing,                           
+          amountA: deposit,                   
+          amountB: deposit                                 
+        }
+      )
+      gasMintNFT = await nonfungibleLendManager.connect(signer2).estimateGas.mint(
+        {
+          assetA: weth.address,
+          assetB: tokenA.address,
+          poolFee: 500,
+          tickLower: tickLower + 2*spacing,                           
+          amountA: deposit,                   
+          amountB: deposit                                 
+        }
+      )
+      console.log("Mint mint add AMM NFT: ", gasMintNFT.toString());
+      gasProvideNFT = await nonfungibleLendManager.connect(signer2).estimateGas.provide(
+        {
+          tokenId: 1,
+          assetA: weth.address,
+          assetB: tokenA.address,
+          poolFee: 500,
+          tickLower: tickLower + 2*spacing,                           
+          amountA: deposit,                   
+          amountB: deposit                                 
+        }
+      )
+      console.log("Povide AMM NFT: ", gasProvideNFT.toString());
+      let liq_nft = (await nonfungibleLendManager.connect(signer2).position(1)).liquidity
+      gasTakeNFT = await nonfungibleLendManager.connect(signer2).estimateGas.take(
+        {
+          tokenId: 1,
+          liquidity: liq_nft.toString(),                         
+          amountMinA: 0,                   
+          amountMinB: 0,
+          recipient: signer2.address                                 
+        }
+      )
+      console.log("take AMM NFT: ", gasTakeNFT.toString());
+      await nonfungibleLendManager.connect(signer2).take(
+        {
+          tokenId: 1,
+          liquidity: liq_nft.toString(),                         
+          amountMinA: 0,                   
+          amountMinB: 0,
+          recipient: signer2.address                                       
+        }
+      )
+      gasWithdrawNFT = await nonfungibleLendManager.connect(signer2).estimateGas.withdraw(
+        {
+          tokenId: 1,                   
+          amountA: deposit,                   
+          amountB: deposit,    
+          recipient: signer2.address                             
+        }
+      )
+      console.log("withdraw AMM NFT: ", gasWithdrawNFT.toString());
+      await nonfungibleLendManager.connect(signer2).withdraw(
+        {
+          tokenId: 1,                   
+          amountA: deposit,                   
+          amountB: deposit,    
+          recipient: signer2.address                             
+        }
+      )
+      gasBurnwNFT = await nonfungibleLendManager.connect(signer2).estimateGas.burn(1)
+      console.log("burn AMM NFT: ", gasBurnwNFT.toString());
     })
   })
 })

@@ -1,16 +1,26 @@
 require("@nomiclabs/hardhat-waffle");
 require('hardhat-contract-sizer');
 
+require("dotenv").config();
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.19",
+    version: "0.8.24",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1000,
+        runs: 800,
         details: { yul: false},
       } 
     }
-  },  
+  },
+  
+  networks: {
+    sepolia: {
+      chainId: 11155111,
+      url: process.env.SEPOLIA_URL || "",
+      accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    },
+  },
 };

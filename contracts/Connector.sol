@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity =0.8.19;
+pragma solidity =0.8.24;
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
@@ -28,7 +28,7 @@ abstract contract Connector is IUniswapV3MintCallback {
 
     function initialize(address _factory) public {
         require(_factory != address(0), "Connector: false factory"); 
-        require(factory == address(0), "Connector: already initialized"); 
+        require(factory == address(0), "Connector: factory already initialized"); 
         factory = _factory;
     }
 
@@ -44,7 +44,7 @@ abstract contract Connector is IUniswapV3MintCallback {
     }
 
     function addLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
-        public 
+        internal 
         returns(
             uint128 liquidity,
             uint256 amount0,
@@ -53,7 +53,7 @@ abstract contract Connector is IUniswapV3MintCallback {
         )
     {
         PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({token0: tokenA, token1: tokenB, fee: poolFee});
-        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey)); 
         // compute the liquidity amount
         {
             (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
@@ -66,7 +66,7 @@ abstract contract Connector is IUniswapV3MintCallback {
                 amountA,
                 amountB
             );
-        }     
+        } 
         // mint pool position
         (amount0, amount1) = pool.mint(
             address(this),
@@ -78,7 +78,7 @@ abstract contract Connector is IUniswapV3MintCallback {
     }
 
     function addLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amount)
-        public 
+        internal 
         returns(
             uint128 liquidity,
             uint256 amount0,
@@ -100,7 +100,7 @@ abstract contract Connector is IUniswapV3MintCallback {
     }
 
     function removeLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 liquidity) 
-        public 
+        internal 
         returns(
             uint256 amount0,
             uint256 amount1,
@@ -113,7 +113,7 @@ abstract contract Connector is IUniswapV3MintCallback {
     }
 
     function collectLiquidity(address tokenA, address tokenB, address receiver, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
-        public 
+        internal 
         returns(
             uint256 amount0,
             uint256 amount1,
@@ -145,10 +145,3 @@ abstract contract Connector is IUniswapV3MintCallback {
         (, , , tokensOwed0, tokensOwed1) = pool.positions(positionKey);
     }
 }
-
-
-
-
- 
-
-

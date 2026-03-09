@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.0;
 
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
@@ -19,7 +20,7 @@ contract Router {
     function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata _data) public returns(bytes calldata){
         uint256 amountToPay = amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta);
         address tokenPay = amount0Delta > 0 ? tokenA : tokenB;
-        TransferHelper.safeTransferFrom(tokenPay, address(this), pool, uint256(amountToPay)); 
+        TransferHelper.safeTransfer(tokenPay, pool, uint256(amountToPay)); 
         return(_data);
     }
 
