@@ -1,5 +1,6 @@
 require("@nomiclabs/hardhat-waffle");
 require('hardhat-contract-sizer');
+require("@nomicfoundation/hardhat-verify");
 
 require("dotenv").config();
 
@@ -23,4 +24,13 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },
   },
+
+  etherscan: {
+    apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY
+    }
+  },
+  sourcify: {
+    enabled: true
+  }
 };
