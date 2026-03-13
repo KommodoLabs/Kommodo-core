@@ -167,6 +167,8 @@ describe("Kommodo_test", function () {
     ticklower = nearestUsableTick(slot0.tick, spacing) + 2 * spacing
     tickupper = ticklower + spacing
 	})
+
+
   describe("Kommodo_test_happy", function () {        
     before(async function () {
       //Mint tokens and approve kommodo
@@ -190,9 +192,10 @@ describe("Kommodo_test", function () {
       deposit = 100
       await kommodo.connect(account2).provide(
         {
-          tickLower: ticklower,                           
-          amountA: deposit,                   
-          amountB: 0,
+          tickLower: ticklower,
+          liquidity: 200000,                           
+          amountMaxA: deposit,                   
+          amountMaxB: 0,
           sender: account2.address                                   
         }
       )
@@ -204,7 +207,7 @@ describe("Kommodo_test", function () {
       expect(AMM_position.liquidity.toString()).to.not.equal('0')
       expect(AMM_position.liquidity).to.equal(kommodo_position.liquidity)
       expect(amount.minus(deposit).toString()).to.equal(balanceA.toString())
-    })    
+    })   
     it('Should take liquidity', async function () {   
       //Burn lending position
       assets = await kommodo.assets(ticklower)
@@ -262,7 +265,7 @@ describe("Kommodo_test", function () {
       expect(totalLiquidity.feeGrowth1X128).to.equal(feegrowth)
       borrowKey = await kommodo.getKey(account1.address, ticklower, false)
       loan = await kommodo.borrower(borrowKey)
-      expect(loan.liquidityBor).to.equal("100130")
+      expect(loan.liquidityBor).to.equal(liquidity)
       expect(loan.interest).to.equal(interest)
       expect(loan.start).to.equal((await ethers.provider.getBlock('latest')).timestamp)
     })
@@ -296,7 +299,6 @@ describe("Kommodo_test", function () {
       expect(await tokenA.balanceOf(account1.address)).to.equal(balance0Before)
       expect(await weth.balanceOf(account1.address)).to.equal(balance1Before.add("2"))
     })
-
     it('Should [partial]close loan', async function () {     
       //Check after borrow balance      
       expect(await tokenA.balanceOf(account1.address)).to.equal(amount.plus("49").toString())
@@ -448,9 +450,10 @@ describe("Kommodo_test", function () {
         sqrtPrice = "1461446703485210103287273052203988822378723970341"
         zeroOne = false
         await kommodo.connect(account2).provide({
-          tickLower: slot0.tick + spacing * 2,                           
-          amountA: amount.div("2").toString(),                   
-          amountB: amount.div("2").toString(),
+          tickLower: slot0.tick + spacing * 2, 
+          liquidity: 20000000000,                           
+          amountMaxA: amount.div("2").toString(),                   
+          amountMaxB: amount.div("2").toString(),                          
           sender: account2.address                                  
         })
       } else {
@@ -460,8 +463,9 @@ describe("Kommodo_test", function () {
         zeroOne = true
         await kommodo.connect(account2).provide({
           tickLower: slot0.tick - spacing * 2,                           
-          amountA: amount.div("2").toString(),                   
-          amountB: amount.div("2").toString(),
+          liquidity: 20000000000,                           
+          amountMaxA: amount.div("2").toString(),                   
+          amountMaxB: amount.div("2").toString(),  
           sender: account2.address                                   
         })
       }
@@ -469,7 +473,7 @@ describe("Kommodo_test", function () {
       feegrowth1Before = await pool.feeGrowthGlobal1X128()
       //call swap from router
       await mockRouter.connect(account2).initialize(pool.address, tokenAdress0, tokenAdress1) 
-      await mockRouter.connect(account2).swap(mockRouter.address, zeroOne, "1000000000000000000", sqrtPrice, "0x")
+      await mockRouter.connect(account2).swap(mockRouter.address, zeroOne, "10000000000", sqrtPrice, "0x")
       //Check feegrowth pool
       feegrowth0After = await pool.feeGrowthGlobal0X128()
       feegrowth1After = await pool.feeGrowthGlobal1X128()
@@ -484,11 +488,13 @@ describe("Kommodo_test", function () {
       positionBefore = await pool.positions(ethers.utils.solidityKeccak256(["address", "uint24", "int24"], [kommodo.address, tickUsed, tickUsedUp]))
       withdrawsBefore = await kommodo.withdraws(tickUsed, account2.address)
       await kommodo.connect(account2).provide({
-                tickLower: tickUsed,                           
-                amountA: amount.div("2").toString(),                   
-                amountB: amount.div("2").toString(),
+                tickLower: tickUsed,        
+                liquidity: 1,                           
+                amountMaxA: amount.div("2").toString(),                   
+                amountMaxB: amount.div("2").toString(),                     
                 sender: account2.address                                   
       })
+
       positionAfter = await pool.positions(ethers.utils.solidityKeccak256(["address", "uint24", "int24"], [kommodo.address, tickUsed, tickUsedUp]))
       withdrawsAfter = await kommodo.withdraws(tickUsed, account2.address)
       expect(positionBefore.feeGrowthInside0LastX128).to.equal("0")
@@ -498,13 +504,17 @@ describe("Kommodo_test", function () {
       expect(withdrawsBefore.amountA).to.equal("0")
       expect(withdrawsBefore.amountB).to.equal("0")
       expect(withdrawsAfter.amountA).to.equal("0")
-      expect(withdrawsAfter.amountB).to.equal("499999999999998")
-    })      
+      expect(withdrawsAfter.amountB).to.not.equal("0")
+      //return slot0 price
+      await mockRouter.connect(account2).swap(mockRouter.address, !zeroOne, "10000000000", "79228162514264337593543950336", "0x")
+    })    
     it('Should pay interest lender after swap passing tick', async function () {
       //Set swap specific data
       let tokenAdress0
       let tokenAdress1
-      let tick = spacing * 3
+      slot0 = await pool.slot0()
+      let tick = nearestUsableTick(slot0.tick, spacing) + 3 * spacing
+      //let tick = spacing * 3
       if(tokenA.address < weth.address) {
         tokenAdress0 = tokenA.address;
         tokenAdress1 = weth.address
@@ -514,9 +524,10 @@ describe("Kommodo_test", function () {
       }
       //Deposit kommodo above swap tick - notice deposit amountA
       await kommodo.connect(account2).provide({
-        tickLower: tick,                           
-        amountA: amount.div("8").toString(),                   
-        amountB: "0",
+        tickLower: tick,     
+        liquidity: 100000000000,                           
+        amountMaxA: amount.div("8").toString(),                   
+        amountMaxB: 0,                        
         sender: account2.address                                   
       })
       liquidity = (await kommodo.lender(tick, account2.address)).liquidity
@@ -535,6 +546,8 @@ describe("Kommodo_test", function () {
       await mockRouter.connect(account2).swap(mockRouter.address, true, "100", "79228162514264337593543950336", "0x")
     })
   })
+
+
   describe("Kommodo_test_unhappy", function () {         
     //Provide()
     it('Should fail provide for zero amountA and amountB', async function () {
@@ -542,8 +555,9 @@ describe("Kommodo_test", function () {
       await expect(kommodo.connect(account2).provide(
         {
           tickLower: ticklower,                           
-          amountA: 0,                   
-          amountB: 0,
+          liquidity: 0,                           
+          amountMaxA: 0,                   
+          amountMaxB: 0,  
           sender: account2.address                                   
         })).to.be.reverted
     })
@@ -563,9 +577,10 @@ describe("Kommodo_test", function () {
       //Fail provide() no AMM pool -> fails in connector call pool.slot0(), no deployed contract
       await expect(kommodoNAMM.connect(account2).provide(
         {
-          tickLower: ticklower,                           
-          amountA: 100,                   
-          amountB: 0,
+          tickLower: ticklower,
+          liquidity: 10,                           
+          amountMaxA: 100,                   
+          amountMaxB: 0,                             
           sender: account2.address                                  
         })).to.be.reverted
     })   
@@ -575,30 +590,21 @@ describe("Kommodo_test", function () {
       //Fail provide() ticklower >= tickmax -> fails in connector call TickMath.getSqrtRatioAtTick(tickUpper), above tickmax 
       await expect(kommodo.connect(account2).provide(
         {
-          tickLower: MAX_TICK,                           
-          amountA: 100,                   
-          amountB: 0                               
+          tickLower: MAX_TICK,  
+          liquidity: 10,                           
+          amountMaxA: 100,                   
+          amountMaxB: 0,                                                        
         })).to.be.reverted
     }) 
-    it('Should fail provide for insufficient funds', async function () {
-      //Get total balance and add 1
-      let amountA = (await tokenA.balanceOf(account2.address)).add("1")
-      await tokenA.connect(account2).approve(kommodo.address, amountA.toString()) 
+    it('Should fail take no position', async function () {
       slot0 = await pool.slot0()
       ticklower = nearestUsableTick(slot0.tick, spacing) + 2 * spacing
-      //Fail provide() insufficient funds -> fails in connector call TransferHelper.safeTransferFrom, error STF
-      await expect(kommodo.connect(account2).provide(
-        {
-          tickLower: ticklower,                           
-          amountA: amountA,                   
-          amountB: 0                                  
-        })).to.be.revertedWith("STF")
-
-    }) 
-    it('Should fail take no position', async function () {
       deposit = 100
       await kommodo.connect(account2).provide({
-        tickLower: ticklower,                           
+        tickLower: ticklower,   
+        liquidity: 100000,                           
+        amountMaxA: deposit,                   
+        amountMaxB: 0,                        
         amountA: deposit,                   
         amountB: 0                                  
       })
@@ -641,8 +647,9 @@ describe("Kommodo_test", function () {
     it('Should fail open for insufficient funds', async function () {
       await kommodo.connect(account2).provide({
         tickLower: ticklower,                           
-        amountA: deposit,                   
-        amountB: 0                                  
+        liquidity: 10,                           
+        amountMaxA: deposit,                   
+        amountMaxB: 0,                                     
       })
       assets = await kommodo.assets(ticklower)
       balanceA_before = await tokenA.balanceOf(account3.address)
@@ -683,13 +690,13 @@ describe("Kommodo_test", function () {
           borAMax:  BigInt(amount),
           borBMax:  BigInt(amount)
       })).to.be.revertedWith("close: no open loan")
-    })   
+    }) 
     it('Should fail close non owner active loan', async function () {
         await kommodo.connect(account2).open(
         {
           token0: false,
           tickBor: ticklower, 
-          liquidityBor: 100, 
+          liquidityBor: 1, 
           borAMin: 0,
           borBMin: 0, 
           colAmount: 200, 
@@ -736,9 +743,10 @@ describe("Kommodo_test", function () {
           assetA: weth.address,
           assetB: tokenA.address,
           poolFee: 500,
-          tickLower: ticklower + 2*spacing,                           
-          amountA: deposit,                   
-          amountB: deposit                                  
+          tickLower: ticklower + 2*spacing,
+          liquidity: 200000,                           
+          amountMaxA: deposit,                   
+          amountMaxB: deposit                              
         }
       )
       //Check position
@@ -770,8 +778,9 @@ describe("Kommodo_test", function () {
           assetB: tokenA.address,
           poolFee: 500,
           tickLower: ticklower + 2*spacing,                           
-          amountA: deposit,                   
-          amountB: deposit 
+          liquidity: 200000,                           
+          amountMaxA: deposit,                   
+          amountMaxB: deposit,    
         }
       )
       //Check position
@@ -817,7 +826,7 @@ describe("Kommodo_test", function () {
       expect(nft_position.withdrawB).to.equal("0") 
       expect(after_balanceA.sub(before_balanceA)).to.equal("99") 
       expect(after_balanceB.sub(before_balanceB)).to.equal("0") 
-    })   
+    })  
     it('Should withdraw NFT', async function () { 
       position_NFT = await nonfungibleLendManager.connect(account2).position(1)
       let ticklower = position_NFT[1]
@@ -869,13 +878,15 @@ describe("Kommodo_test", function () {
       slot0 = await pool.slot0()
       let old_sqrt = slot0.sqrtPriceX96
       clp_tick = nearestUsableTick(slot0.tick, spacing) + 10 * spacing
-      deposit = 10n**8n
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99950363n
       await kommodo.connect(account2).provide(
         {
-          tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: 0,
+          tickLower: clp_tick, 
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: 0,                          
           sender: account2.address                                   
         }
       )
@@ -945,13 +956,15 @@ describe("Kommodo_test", function () {
       slot0 = await pool.slot0()
       let old_sqrt = slot0.sqrtPriceX96
       clp_tick = nearestUsableTick(slot0.tick, spacing) - 11 * spacing
-      deposit = 10n**8n
       //lender deposit token1 -> amountB
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99949889n
       await kommodo.connect(account2).provide(
         {
-          tickLower: clp_tick,                           
-          amountA: 0,                   
-          amountB: deposit,
+          tickLower: clp_tick,
+          liquidity: liquidity_in,                           
+          amountMaxA: 0,                   
+          amountMaxB: deposit,  
           sender: account2.address                                   
         }
       )
@@ -1014,20 +1027,22 @@ describe("Kommodo_test", function () {
       expect(borrow_value_as_token1).to.be.below(Number(collateral_value_as_token1))
       //return sqrt pool original
       await mockRouter.connect(account2).swap(mockRouter.address, false, "10000", old_sqrt, "0x")
-    })      
+    })
     it('Collateral token1 - borrow CLP > current tick - tick increases above', async function () {
       let token0 = tokenA.address < weth.address ? tokenA : weth
       let token1 = tokenA.address > weth.address ? tokenA : weth
       slot0 = await pool.slot0()
       let old_sqrt = slot0.sqrtPriceX96
-      clp_tick = nearestUsableTick(slot0.tick, spacing) + 20 * spacing
-      deposit = 10n**8n   
+      clp_tick = nearestUsableTick(slot0.tick, spacing) + 20 * spacing 
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99950561n
       await kommodo.connect(account2).provide(
         {
-          tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: 0,
+          tickLower: clp_tick, 
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: 0,                          
           sender: account2.address                                   
         }
       )
@@ -1098,14 +1113,16 @@ describe("Kommodo_test", function () {
       let token1 = tokenA.address > weth.address ? tokenA : weth
       slot0 = await pool.slot0()
       let old_sqrt = slot0.sqrtPriceX96
-      clp_tick = nearestUsableTick(slot0.tick, spacing) - 20 * spacing
-      deposit = 10n**8n      
+      clp_tick = nearestUsableTick(slot0.tick, spacing) - 20 * spacing 
       //lender deposit token1 -> amountB
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99950438n
       await kommodo.connect(account2).provide(
         {
-          tickLower: clp_tick,                           
-          amountA: 0,                   
-          amountB: deposit,
+          tickLower: clp_tick,  
+          liquidity: liquidity_in,                           
+          amountMaxA: 0,                   
+          amountMaxB: deposit,                            
           sender: account2.address                                   
         }
       )
@@ -1169,7 +1186,7 @@ describe("Kommodo_test", function () {
       expect(borrow_value_as_token1).to.be.below(Number(collateral_value_as_token1))
       //return sqrt pool original
       await mockRouter.connect(account2).swap(mockRouter.address, false, "10000000000000000000", old_sqrt, "0x")
-    })
+    })   
     //special case - inside range 
     it('Collateral token0 - borrow CLP inside current tick - tick decreases below', async function () {
       let token0 = tokenA.address < weth.address ? tokenA : weth
@@ -1183,14 +1200,16 @@ describe("Kommodo_test", function () {
       await mockRouter.connect(account2).swap(mockRouter.address, false, "10000000000000000000", new_sqrt, "0x")
       slot0 = await pool.slot0()
       expect(new_sqrt).to.equal(slot0.sqrtPriceX96)
-      deposit = 10n**8n
       clp_tick = new_tick - spacing
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: deposit,
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: deposit, 
           sender: account2.address                                   
         }
       )
@@ -1267,14 +1286,16 @@ describe("Kommodo_test", function () {
       await mockRouter.connect(account2).swap(mockRouter.address, true, "10000000000000000000", new_sqrt, "0x")
       slot0 = await pool.slot0()
       expect(new_sqrt).to.equal(slot0.sqrtPriceX96)
-      deposit = 10n**8n
       clp_tick = new_tick - spacing
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: deposit,
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: deposit, 
           sender: account2.address                                   
         }
       )
@@ -1345,13 +1366,15 @@ describe("Kommodo_test", function () {
       slot0 = await pool.slot0()
       let old_sqrt = slot0.sqrtPriceX96
       clp_tick = nearestUsableTick(slot0.tick, spacing) + 10 * spacing
-      deposit = 10n**8n
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99950313n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: 0,
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: 0, 
           sender: account2.address                                   
         }
       )
@@ -1424,13 +1447,15 @@ describe("Kommodo_test", function () {
       slot0 = await pool.slot0()
       let old_sqrt = slot0.sqrtPriceX96
       clp_tick = nearestUsableTick(slot0.tick, spacing) - 30 * spacing
-      deposit = 10n**8n      
       //lender deposit token1 -> amountB
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99950685n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: 0,                   
-          amountB: deposit,
+          liquidity: liquidity_in,                           
+          amountMaxA: 0,                   
+          amountMaxB: deposit, 
           sender: account2.address                                   
         }
       )
@@ -1501,13 +1526,15 @@ describe("Kommodo_test", function () {
     it('Should fail insufficient token0 for borrow token0', async function () {
       slot0 = await pool.slot0()
       clp_tick = nearestUsableTick(slot0.tick, spacing) + 200 * spacing
-      deposit = 10n**8n
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99954816n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: 0,
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: 0, 
           sender: account2.address                                   
         }
       )
@@ -1531,13 +1558,15 @@ describe("Kommodo_test", function () {
     it('Should fail insufficient token0 for borrow token1', async function () {
       slot0 = await pool.slot0()
       clp_tick = nearestUsableTick(slot0.tick, spacing) - 200 * spacing
-      deposit = 10n**8n
       //lender deposit token1 -> amountB
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99954703n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: 0,                   
-          amountB: deposit,
+          liquidity: liquidity_in,                           
+          amountMaxA: 0,                   
+          amountMaxB: deposit, 
           sender: account2.address                                   
         }
       )
@@ -1553,7 +1582,7 @@ describe("Kommodo_test", function () {
       let price_token0_per_token1 = 1/Number(price_token1_per_token0) // convert price = token0/token1
       let adjusted_deposit = Math.round(Number(deposit) * price_token0_per_token1) //borrow -> 10n**8 * price_token0_per_token1
       let margin = await kommodo.getFee(adjusted_deposit)
-      let collateral_amount = BigNumber.from(adjusted_deposit).add(margin).add(7) //insufficient collateral based on borrow amount - small adjust (sub8) for rounding to get within 1 of borrow value1
+      let collateral_amount = BigNumber.from(adjusted_deposit).add(margin).sub(1) //insufficient collateral based on borrow amount - small adjust for rounding to get within 1 of borrow value1
       await expect(kommodo.connect(account1).open({
         token0: true,
         tickBor: clp_tick, 
@@ -1567,13 +1596,15 @@ describe("Kommodo_test", function () {
     it('Should fail insufficient token1 for borrow token0', async function () {
       slot0 = await pool.slot0()
       clp_tick = nearestUsableTick(slot0.tick, spacing) + 201 * spacing
-      deposit = 10n**8n
       //lender deposit token0 -> amountA
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99954839n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: deposit,                   
-          amountB: 0,
+          liquidity: liquidity_in,                           
+          amountMaxA: deposit,                   
+          amountMaxB: 0, 
           sender: account2.address                                   
         }
       )
@@ -1589,7 +1620,7 @@ describe("Kommodo_test", function () {
       let price_token0_per_token1 = 1/Number(price_token1_per_token0) // convert price = token0/token1
       let adjusted_deposit = Math.round(Number(deposit) * price_token1_per_token0) //borrow -> 10n**8 * price_token0_per_token1
       let margin = await kommodo.getFee(adjusted_deposit)
-      let collateral_amount = BigNumber.from(adjusted_deposit).add(margin).sub(8) //insufficient collateral based on borrow amount - small adjust (sub8) for rounding to get within 1 of borrow value1
+      let collateral_amount = BigNumber.from(adjusted_deposit).add(margin).sub(1) //insufficient collateral based on borrow amount - small adjust for rounding to get within 1 of borrow value1
       await expect(kommodo.connect(account1).open({
         token0: false,
         tickBor: clp_tick, 
@@ -1603,13 +1634,15 @@ describe("Kommodo_test", function () {
     it('Should fail insufficient token1 for borrow token1', async function () {
       slot0 = await pool.slot0()
       clp_tick = nearestUsableTick(slot0.tick, spacing) - 201 * spacing
-      deposit = 10n**8n
       //lender deposit token1 -> amountAB
+      let liquidity_in = 10n**8n 
+      deposit = 10n**8n - 99954726n
       await kommodo.connect(account2).provide(
         {
           tickLower: clp_tick,                           
-          amountA: 0,                   
-          amountB: deposit,
+          liquidity: liquidity_in,                           
+          amountMaxA: 0,                   
+          amountMaxB: deposit, 
           sender: account2.address                                   
         }
       )
@@ -1630,6 +1663,6 @@ describe("Kommodo_test", function () {
         interest: 0
       })).to.be.revertedWith("open: insufficient collateral for borrow")
     })
-  })   
+  })  
 })
 

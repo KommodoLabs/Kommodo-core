@@ -47,7 +47,6 @@ contract KommodoTestFormal is Test {
         });
         kommodo = new Kommodo(create_params);
     } 
-
     function check_kommodo_lender_provide(
         uint128 amountA,
         uint128 amountB
@@ -65,9 +64,10 @@ contract KommodoTestFormal is Test {
         assertEq(blocknumber_provide_before, 0); 
         // Action: provide
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: amountA,
-            amountB: amountB,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: amountA + amountB,                          
+            amountMaxA: amountA,                   
+            amountMaxB: amountB      
         });
         kommodo.provide(provide_params);
         // Postconditions
@@ -76,10 +76,10 @@ contract KommodoTestFormal is Test {
         assertNotEq(liquidity_provide_after, 0); 
         assertNotEq(liquidity_provide_lender_after, 0); 
         assertNotEq(blocknumber_provide_after, 0); 
+        assertEq(amountA + amountB, liquidity_provide_lender_after);
         assertEq(liquidity_provide_after, liquidity_provide_lender_after); 
         assertEq(locked_provide_lender_after, liquidity_provide_lender_after); 
     }
-
     function check_kommodo_lender_take(
         uint128 amountA,
         uint128 amountB
@@ -91,16 +91,18 @@ contract KommodoTestFormal is Test {
         int24[3] memory allowed = [min_tick, 0+TICKSPACING, max_tick];
         int24 tickLower = allowed[uint256(bound(int24(0), 0, 2))];
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: amountA,
-            amountB: amountB,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: amountA + amountB,                          
+            amountMaxA: amountA,                   
+            amountMaxB: amountB  
         });
         kommodo.provide(provide_params);
         (uint128 liquidity_take_before, , , ) = kommodo.assets(tickLower);
         (uint128 liquidity_take_lender_before, uint128 locked_take_lender_before, , , uint256 blocknumber_take_before) = kommodo.lender(tickLower, address(this));
         vm.assume(liquidity_take_before > 0);
         vm.assume(liquidity_take_before == liquidity_take_lender_before);
-        vm.assume(locked_take_lender_before == liquidity_take_lender_before);       
+        vm.assume(locked_take_lender_before == liquidity_take_lender_before);    
+        vm.assume(amountA + amountB == liquidity_take_lender_before);   
         vm.assume(block.number > 0);
         vm.assume(blocknumber_take_before == block.number);
         vm.roll(block.number + 1);
@@ -122,7 +124,6 @@ contract KommodoTestFormal is Test {
         assertEq(locked_take_lender_after, 0); 
         assertNotEq(blocknumber_take_after, 0); 
     }
-
     function check_kommodo_borrow_open(
         uint128 amountA,
         uint128 amountB
@@ -141,14 +142,16 @@ contract KommodoTestFormal is Test {
         Token(TOKEN0).approve(address(kommodo), type(uint256).max);
         Token(TOKEN1).approve(address(kommodo), type(uint256).max);
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: amountA,
-            amountB: amountB,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: amountA + amountB,                          
+            amountMaxA: amountA,                   
+            amountMaxB: amountB  
         });
         kommodo.provide(provide_params);
         (uint128 liquidity_open_before, uint128 locked_open_before, , ) = kommodo.assets(tickLower);
         vm.assume(liquidity_open_before > 0);
         vm.assume(locked_open_before == 0);
+        vm.assume(amountA + amountB == liquidity_open_before);   
         (uint128 liquidity_borrower_open_before, , , ) = kommodo.borrower(keccak256(abi.encode(borrower, tickLower, true)));
         vm.assume(liquidity_borrower_open_before == 0);
         vm.stopPrank();
@@ -178,7 +181,6 @@ contract KommodoTestFormal is Test {
         assertEq(interest_open_after, 100); 
         assertNotEq(start_open_after, 0); 
     }
-
     function check_kommodo_borrow_close(
         uint128 liquidity
     ) public {
@@ -196,9 +198,10 @@ contract KommodoTestFormal is Test {
         Token(TOKEN0).approve(address(kommodo), type(uint256).max);
         Token(TOKEN1).approve(address(kommodo), type(uint256).max);
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: type(uint128).max,
-            amountB: type(uint128).max,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: type(uint128).max,                          
+            amountMaxA: type(uint128).max,                   
+            amountMaxB: type(uint128).max  
         });
         kommodo.provide(provide_params);
         (uint128 liquidity_open_before, uint128 locked_open_before, , ) = kommodo.assets(tickLower);
@@ -235,7 +238,6 @@ contract KommodoTestFormal is Test {
         });
         kommodo.close(close_params); 
         }
-
         vm.stopPrank();
         // Postconditions  
         (uint128 liquidity_borrower_close_after, , uint128 interest_close_after, uint256 start_close_after) = kommodo.borrower(keccak256(abi.encode(borrower, tickLower, true)));
@@ -246,7 +248,6 @@ contract KommodoTestFormal is Test {
         assertEq(interest_close_after, 0); 
         assertEq(start_close_after, 0); 
     }
-
     function check_kommodo_borrow_adjust(
         uint128 liquidity,
         uint128 liquidity_adjust
@@ -265,9 +266,10 @@ contract KommodoTestFormal is Test {
         Token(TOKEN0).approve(address(kommodo), type(uint256).max);
         Token(TOKEN1).approve(address(kommodo), type(uint256).max);
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: type(uint128).max,
-            amountB: type(uint128).max,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: type(uint128).max,                          
+            amountMaxA: type(uint128).max,                   
+            amountMaxB: type(uint128).max  
         });
         kommodo.provide(provide_params);
         (uint128 liquidity_open_before, uint128 locked_open_before, , ) = kommodo.assets(tickLower);
@@ -320,7 +322,6 @@ contract KommodoTestFormal is Test {
         assertEq(liquidity_borrower_close_after, new_liq); 
         assertNotEq(start_close_after, 0);   
     }
-
     function check_kommodo_feegrowth_interest(
         uint128 liquidity
     ) public {
@@ -338,9 +339,10 @@ contract KommodoTestFormal is Test {
         Token(TOKEN0).approve(address(kommodo), type(uint256).max);
         Token(TOKEN1).approve(address(kommodo), type(uint256).max);
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: type(uint128).max,
-            amountB: 0,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: type(uint128).max,                          
+            amountMaxA: type(uint128).max,                   
+            amountMaxB: type(uint128).max  
         });
         kommodo.provide(provide_params);
         {
@@ -387,7 +389,6 @@ contract KommodoTestFormal is Test {
         assertEq(withdrawA, 0);     
         assertGt(withdrawB, 0);          
     }
-
     function check_kommodo_feegrowth_swap(
         uint128 amountA,
         uint128 amountB
@@ -407,9 +408,10 @@ contract KommodoTestFormal is Test {
         Token(TOKEN0).approve(address(kommodo), type(uint256).max);
         Token(TOKEN1).approve(address(kommodo), type(uint256).max);
         IKommodo.ProvideParams memory provide_params = IKommodo.ProvideParams({
-            amountA: type(uint128).max,
-            amountB: 0,
-            tickLower: tickLower
+            tickLower: tickLower,
+            liquidity: type(uint128).max,                          
+            amountMaxA: type(uint128).max,                   
+            amountMaxB: type(uint128).max  
         });
         kommodo.provide(provide_params);
         {

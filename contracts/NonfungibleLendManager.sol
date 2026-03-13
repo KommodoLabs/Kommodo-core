@@ -21,16 +21,18 @@ contract NonfungibleLendManager is ERC721Enumerable {
         address assetB;
         uint24 poolFee;
         int24 tickLower; 
-        uint128 amountA; 
-        uint128 amountB;     
+        uint128 liquidity;
+        uint128 amountMaxA; 
+        uint128 amountMaxB;     
     } 
 
     struct ProvideParams { 
         uint256 tokenId;
         address assetA;
         address assetB;
-        uint128 amountA; 
-        uint128 amountB;     
+        uint128 liquidity;
+        uint128 amountMaxA; 
+        uint128 amountMaxB;       
     } 
 
     struct TakeParams { 
@@ -75,7 +77,9 @@ contract NonfungibleLendManager is ERC721Enumerable {
     //Approve kommodo pool
     function poolApprove(address tokenA, address tokenB, uint24 poolFee) public {
         address pool = factory.kommodo(tokenA, tokenB, poolFee);
+        IERC20(tokenA).approve(pool, 0); 
         IERC20(tokenA).approve(pool, type(uint256).max);
+        IERC20(tokenB).approve(pool, 0); 
         IERC20(tokenB).approve(pool, type(uint256).max);
     }
 
@@ -89,15 +93,16 @@ contract NonfungibleLendManager is ERC721Enumerable {
     function mint(MintParams calldata params) public {
         IKommodo pool = IKommodo(factory.kommodo(params.assetA, params.assetB, params.poolFee));
         //Transfer amounts IN
-        TransferHelper.safeTransferFrom(params.assetA, msg.sender, address(this), params.amountA);
-        TransferHelper.safeTransferFrom(params.assetB, msg.sender, address(this), params.amountB);
+        TransferHelper.safeTransferFrom(params.assetA, msg.sender, address(this), params.amountMaxA);
+        TransferHelper.safeTransferFrom(params.assetB, msg.sender, address(this), params.amountMaxB);
         //Add liquidity to pool
         (uint128 pre_liquidity, , , , ) = pool.lender(params.tickLower, address(this));
         pool.provide(
             IKommodo.ProvideParams({
                 tickLower: params.tickLower,
-                amountA: params.amountA,
-                amountB: params.amountB
+                liquidity: params.liquidity,
+                amountMaxA: params.amountMaxA,
+                amountMaxB: params.amountMaxB
             })
         );
         //Mint NFT
@@ -131,15 +136,16 @@ contract NonfungibleLendManager is ERC721Enumerable {
         Position storage _position = position[params.tokenId];
         IKommodo pool = IKommodo(_position.pool);
         //Transfer amounts IN
-        TransferHelper.safeTransferFrom(params.assetA, msg.sender, address(this), params.amountA);
-        TransferHelper.safeTransferFrom(params.assetB, msg.sender, address(this), params.amountB);
+        TransferHelper.safeTransferFrom(params.assetA, msg.sender, address(this), params.amountMaxA);
+        TransferHelper.safeTransferFrom(params.assetB, msg.sender, address(this), params.amountMaxB);
         //Add liquidity to pool
         (uint128 pre_liquidity, , , ) = pool.assets(_position.tickLower);
         pool.provide(
             IKommodo.ProvideParams({
                 tickLower: _position.tickLower,
-                amountA: params.amountA,
-                amountB: params.amountB
+                liquidity: params.liquidity,
+                amountMaxA: params.amountMaxA,
+                amountMaxB: params.amountMaxB
             })
         );
         //Store position - notice: overflow is safe for feegrowth

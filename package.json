@@ -7,7 +7,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "start-node": "npx hardhat node",
-    "fuzz-node": "wait-on tcp:127.0.0.1:8545 && npx hardhat run scripts/deployFactoryTest.js --network localhost && forge test --fork-url http://127.0.0.1:8545",
+    "fuzz-node": "wait-on tcp:127.0.0.1:8545 && npx hardhat run scripts/deployFactoryTest.js --network localhost && forge test --fork-url http://127.0.0.1:8545 -vvv",
     "fuzz": "concurrently --names \"start-node,fuzz-node\" --hide \"start-node\" \"npm run start-node\" \"npm run fuzz-node\"",
     "formal": "halmos"
   },

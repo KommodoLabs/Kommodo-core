@@ -10,8 +10,8 @@ interface IKommodo {
         address indexed owner,
         int24 indexed tickLower,
         uint128 liquidity,
-        uint128 amountA,
-        uint128 amountB
+        uint256 amountA,
+        uint256 amountB
     );
 
     event Take(
@@ -131,8 +131,9 @@ interface IKommodo {
 
     struct ProvideParams { 
         int24 tickLower; 
-        uint128 amountA; 
-        uint128 amountB; 
+        uint128 liquidity;
+        uint128 amountMaxA; 
+        uint128 amountMaxB;   
     } 
 
     function provide(ProvideParams calldata params)

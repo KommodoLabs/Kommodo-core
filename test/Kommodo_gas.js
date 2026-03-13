@@ -191,26 +191,29 @@ describe("Kommodo_gas", function () {
 		  await weth.connect(signer2).approve(kommodo.address, amount.toString())
       gasProvide = await kommodo.connect(signer2).estimateGas.provide(
         {
-          tickLower: tickLower,                           
-          amountA: deposit,                   
-          amountB: deposit,
+          tickLower: tickLower,  
+          liquidity: 10,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit,
           sender: signer2.address
         }, 
         { gasLimit: '1000000' })
       console.log("Povide mint AMM: ", gasProvide.toString());
       await kommodo.connect(signer2).provide(
         {
-          tickLower: tickLower,                           
-          amountA: deposit,                   
-          amountB: deposit,
+          tickLower: tickLower, 
+          liquidity: 10,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit,
           sender: signer2.address
         }, 
         { gasLimit: '1000000' })
       gasProvide = await kommodo.connect(signer2).estimateGas.provide(
         {
           tickLower: tickLower,                           
-          amountA: deposit,                   
-          amountB: deposit,
+          liquidity: 10,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit,
           sender: signer2.address                               
         },
         { gasLimit: '1000000' })
@@ -342,9 +345,10 @@ describe("Kommodo_gas", function () {
           assetA: weth.address,
           assetB: tokenA.address,
           poolFee: 500,
-          tickLower: tickLower + 2*spacing,                           
-          amountA: deposit,                   
-          amountB: deposit                                 
+          tickLower: tickLower + 2*spacing,  
+          liquidity: 1,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit                                 
         }
       )
       console.log("Mint mint AMM NFT: ", gasMintNFT.toString());
@@ -354,8 +358,9 @@ describe("Kommodo_gas", function () {
           assetB: tokenA.address,
           poolFee: 500,
           tickLower: tickLower + 2*spacing,                           
-          amountA: deposit,                   
-          amountB: deposit                                 
+          liquidity: 1,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit                                  
         }
       )
       gasMintNFT = await nonfungibleLendManager.connect(signer2).estimateGas.mint(
@@ -364,8 +369,9 @@ describe("Kommodo_gas", function () {
           assetB: tokenA.address,
           poolFee: 500,
           tickLower: tickLower + 2*spacing,                           
-          amountA: deposit,                   
-          amountB: deposit                                 
+          liquidity: 1,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit                                   
         }
       )
       console.log("Mint mint add AMM NFT: ", gasMintNFT.toString());
@@ -376,8 +382,9 @@ describe("Kommodo_gas", function () {
           assetB: tokenA.address,
           poolFee: 500,
           tickLower: tickLower + 2*spacing,                           
-          amountA: deposit,                   
-          amountB: deposit                                 
+          liquidity: 1,                         
+          amountMaxA: deposit,                   
+          amountMaxB: deposit                                    
         }
       )
       console.log("Povide AMM NFT: ", gasProvideNFT.toString());

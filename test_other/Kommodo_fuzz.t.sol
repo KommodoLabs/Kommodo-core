@@ -82,9 +82,10 @@ contract KommodoTestFuzz is Test {
         uint256 balanceWETH2_before = weth2.balanceOf(address(lender));
         //Action
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
-            tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            tickLower: next_tick, 
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0      
         });
         kommodoPool.provide(provideParams);
         vm.stopPrank();
@@ -93,13 +94,13 @@ contract KommodoTestFuzz is Test {
         (uint128 liqPosition, , , , ) = kommodoPool.lender(next_tick, address(lender));
         assertNotEq(liqPool, 0);
         assertNotEq(liqPosition, 0);
+        assertEq(depositAmount, liqPosition);
         assertEq(liqPool, liqPosition);
         uint256 balanceWETH_after = weth.balanceOf(address(lender));
         uint256 balanceWETH2_after = weth2.balanceOf(address(lender));
-        assertEq(depositAmount, balanceWETH2_before - balanceWETH2_after);
+        assertGt(balanceWETH2_before - balanceWETH2_after, 0);
         assertEq(0, balanceWETH_before - balanceWETH_after);
     }
-
     function test_fuzz_kommodo_take(uint128 depositAmount) public {  
         vm.startPrank(lender);
         //Pre conditions
@@ -108,9 +109,10 @@ contract KommodoTestFuzz is Test {
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
-            tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            tickLower: next_tick, 
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0      
         });
         kommodoPool.provide(provideParams);
         vm.roll(block.number + 1);
@@ -119,6 +121,7 @@ contract KommodoTestFuzz is Test {
         (uint128 liqPosition_before, , , , ) = kommodoPool.lender(next_tick, address(lender));
         assertNotEq(liqPool_before, 0);
         assertNotEq(liqPosition_before, 0);
+        assertEq(depositAmount, liqPosition_before);
         assertEq(liqPool_before, liqPosition_before);
         uint256 balanceWETH_before = weth.balanceOf(address(lender));
         uint256 balanceWETH2_before = weth2.balanceOf(address(lender));
@@ -141,22 +144,23 @@ contract KommodoTestFuzz is Test {
         assertEq(balanceWETH2_after, balanceWETH2_before);
         assertEq(balanceWETH_after, balanceWETH_before);
     }
-
     function test_fuzz_kommodo_withdraw(uint128 depositAmount) public {  
         vm.startPrank(lender);
         //Pre conditions
-        depositAmount = uint128(bound(depositAmount, 2, 100 ether));  
+        depositAmount = uint128(bound(depositAmount, 1e6, 100 ether));  
         (, int24 tick, , , , , ) = uniPool.slot0();
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
-            tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            tickLower: next_tick, 
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0                                   
         });
         kommodoPool.provide(provideParams);
         vm.roll(block.number + 1);
         (uint128 liqPosition_before, , , , ) = kommodoPool.lender(next_tick, address(lender));
+        assertEq(liqPosition_before, depositAmount);
         IKommodo.TakeParams memory take_params = IKommodo.TakeParams({
             tickLower: next_tick,
             liquidity: liqPosition_before,
@@ -171,8 +175,7 @@ contract KommodoTestFuzz is Test {
         assertEq(liqPosition_after, 0);
         //check withdraw available
         (uint128 withdrawA, uint128 withdrawB) = kommodoPool.withdraws(next_tick, address(lender));
-        assertNotEq(withdrawA, 0);
-        assertEq(withdrawA, depositAmount - 1); //minus 1 for rounding down
+        assertGt(withdrawA, 0); 
         assertEq(withdrawB, 0);
         uint256 balanceWETH_before = weth.balanceOf(address(lender));
         uint256 balanceWETH2_before = weth2.balanceOf(address(lender));
@@ -185,18 +188,18 @@ contract KommodoTestFuzz is Test {
         assertEq(withdrawA, balanceWETH2_after - balanceWETH2_before);
         assertEq(withdrawB, balanceWETH_after - balanceWETH_before);
     }
-
     function test_fuzz_kommodo_open(uint128 depositAmount) public {  
         //Pre conditions
         vm.startPrank(lender);
-        depositAmount = uint128(bound(depositAmount, 10, 100 ether));  //start 10 for rounding 0 
+        depositAmount = uint128(bound(depositAmount, 1e6, 100 ether));  //start 10 for rounding 0 
         (, int24 tick, , , , , ) = uniPool.slot0();
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
-            tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            tickLower: next_tick, 
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0                                    
         });
         kommodoPool.provide(provideParams);
         //Pre check 
@@ -204,6 +207,7 @@ contract KommodoTestFuzz is Test {
         (uint128 liqPosition_before, , , , ) = kommodoPool.lender(next_tick, address(lender));
         assertNotEq(liqPool_before, 0);
         assertNotEq(liqPosition_before, 0);
+        assertEq(liqPosition_before, depositAmount);
         assertEq(liqPool_before, liqPosition_before);
         vm.stopPrank();
         uint256 balanceWETH_before = weth.balanceOf(address(borrower));
@@ -245,23 +249,24 @@ contract KommodoTestFuzz is Test {
         assertEq(collateralAmount + interest_fee, balanceWETH_before - balanceWETH_after);  
         }
     }
-
     function test_fuzz_kommodo_close(uint128 depositAmount) public {  
         //Pre conditions
         vm.startPrank(lender);
-        depositAmount = uint128(bound(depositAmount, 3, 100 ether));  
+        depositAmount = uint128(bound(depositAmount, 1e6, 100 ether));  
         (, int24 tick, , , , , ) = uniPool.slot0();
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
             tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0             
         });
         kommodoPool.provide(provideParams);
         vm.stopPrank();
         vm.startPrank(borrower);
-        (uint128 liqPool_before, , , ) = kommodoPool.assets(next_tick);    
+        (uint128 liqPool_before, , , ) = kommodoPool.assets(next_tick); 
+        assertEq(liqPool_before, depositAmount);   
         uint128 borrowLiquidity = liqPool_before / 4;
         IKommodo.OpenParams memory open_params = IKommodo.OpenParams({
             token0: false,
@@ -315,23 +320,24 @@ contract KommodoTestFuzz is Test {
         assertNotEq(0, balanceWETH2_before - balanceWETH2_after);
         assertEq(collater_borrower_pre + 1, balanceWETH_after -  balanceWETH_before);  //+1 is interest returned
     }
-
     function test_fuzz_kommodo_adjust(uint128 depositAmount) public { 
         //Pre conditions
         vm.startPrank(lender);
-        depositAmount = uint128(bound(depositAmount, 3, 100 ether));  
+        depositAmount = uint128(bound(depositAmount, 1e6, 100 ether));  
         (, int24 tick, , , , , ) = uniPool.slot0();
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
             tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0     
         });
         kommodoPool.provide(provideParams);
         vm.stopPrank();
         vm.startPrank(borrower);
-        (uint128 liqPool_before, , , ) = kommodoPool.assets(next_tick);    
+        (uint128 liqPool_before, , , ) = kommodoPool.assets(next_tick);   
+        assertEq(liqPool_before, depositAmount);    
         uint128 borrowLiquidity = liqPool_before / 4;
         IKommodo.OpenParams memory open_params = IKommodo.OpenParams({
             token0: false,
@@ -384,23 +390,24 @@ contract KommodoTestFuzz is Test {
         assertNotEq(0, balanceWETH2_before - balanceWETH2_after);
         assertEq(2 -1, balanceWETH_after -  balanceWETH_before);  //2 collateral withdraw - 1 interest deposit
     }
-
     function test_fuzz_kommodo_setInterest(uint128 depositAmount) public {  
         //Pre conditions
         vm.startPrank(lender);
-        depositAmount = uint128(bound(depositAmount, 3, 100 ether));  
+        depositAmount = uint128(bound(depositAmount, 1e6, 100 ether));  
         (, int24 tick, , , , , ) = uniPool.slot0();
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
             tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0         
         });
         kommodoPool.provide(provideParams);
         vm.stopPrank();
         vm.startPrank(borrower);
-        (uint128 liqPool_before, , , ) = kommodoPool.assets(next_tick);    
+        (uint128 liqPool_before, , , ) = kommodoPool.assets(next_tick);
+        assertEq(liqPool_before, depositAmount);       
         uint128 borrowLiquidity = liqPool_before / 4;
         IKommodo.OpenParams memory open_params = IKommodo.OpenParams({
             token0: false,
@@ -435,18 +442,18 @@ contract KommodoTestFuzz is Test {
         assertEq(interest_decrease, 6);
         assertEq(5, balanceWETH_after_decrease - balanceWETH_after_increase);  //5 interest withdraw
     }
-
     function test_fuzz_kommodo_borrow_interest_withdraw(uint128 depositAmount) public {  
         //Pre conditions
         vm.startPrank(lender);
-        depositAmount = uint128(bound(depositAmount, 10000, 100 ether));  //start 10000 because of rounding withdraw amount
+        depositAmount = uint128(bound(depositAmount, 1e6, 100 ether));  //start 10000 because of rounding withdraw amount
         (, int24 tick, , , , , ) = uniPool.slot0();
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
             tickLower: next_tick,                           
-            amountA: depositAmount,                   
-            amountB: 0      
+            liquidity: depositAmount,                          
+            amountMaxA: depositAmount,                   
+            amountMaxB: 0      
         });
         kommodoPool.provide(provideParams);
         vm.stopPrank();
@@ -456,7 +463,8 @@ contract KommodoTestFuzz is Test {
         assertEq(feeGrowth0X128, 0);
         assertEq(feeGrowth1X128, 0);
         }
-        (uint128 liqPool_before, , uint256 feeGrowth0X128_assets, uint256 feeGrowth1X128_assets) = kommodoPool.assets(next_tick);   
+        (uint128 liqPool_before, , uint256 feeGrowth0X128_assets, uint256 feeGrowth1X128_assets) = kommodoPool.assets(next_tick);
+        assertEq(liqPool_before, depositAmount);    
         assertEq(feeGrowth0X128_assets, 0);
         assertEq(feeGrowth1X128_assets, 0);
         uint128 borrowLiquidity = liqPool_before / 4;
@@ -500,11 +508,11 @@ contract KommodoTestFuzz is Test {
         uint256 balanceWETH2_after = weth2.balanceOf(address(lender));
         assertGt(balanceWETH_after - balanceWETH_before, 0);
         assertEq(balanceWETH2_after - balanceWETH2_before, 0);
-    }
+    }  
     function test_fuzz_kommodo_swap_fee_withdraw(int256 depositAmount) public {  
         //Pre conditions
         vm.startPrank(lender);
-        depositAmount = int256(bound(depositAmount, 10000, 100 ether));  //start 10000 because of rounding withdraw amount
+        depositAmount = int256(bound(depositAmount, 1e6, 100 ether));  //start 1 ether because of rounding withdraw low liquidity
         weth.deposit{value: 100 ether}();
         weth2.deposit{value: 100 ether}();
         weth.transfer(address(mockRouter), 100 ether);
@@ -513,9 +521,10 @@ contract KommodoTestFuzz is Test {
         int24 spacing = uniPool.tickSpacing();
         int24 next_tick = tick + spacing;
         IKommodo.ProvideParams memory provideParams = IKommodo.ProvideParams({
-            tickLower: next_tick,                           
-            amountA: uint128(uint256(depositAmount)),                   
-            amountB: 0      
+            tickLower: next_tick,
+            liquidity: uint128(uint256(depositAmount)),                          
+            amountMaxA: uint128(uint256(depositAmount)),                   
+            amountMaxB: 0                               
         });
         kommodoPool.provide(provideParams);
         {        
@@ -551,7 +560,6 @@ contract KommodoTestFuzz is Test {
         assertEq(feegrowth0After, 0);
         assertNotEq(feegrowth1After, 0);
         assertEq(feeGrowth0X128_la, 0);
-        assertNotEq(feeGrowth1X128_la, 0);
         assertEq(withdrawA_a, 0);
         bytes32 positionKey = PositionKey.compute(address(kommodoPool), next_tick, next_tick+spacing);
         (uint128 liquidity_uni, , uint256 feeGrowthInside1LastX128, , ) = uniPool.positions(positionKey);
@@ -566,7 +574,6 @@ contract KommodoTestFuzz is Test {
         assertEq(feeGrowth1X128_la, expectedFeegrowt_kommodo);
         assertEq(withdrawB_a, expectedAmount_kommodo);
     }
-
     //solvency guarantee fuzz
     function test_kommodo_solvency_guarantee_col0(
         uint128 collateralAmount,

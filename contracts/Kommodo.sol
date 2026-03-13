@@ -42,19 +42,20 @@ contract Kommodo is IKommodo, Connector {
     function provide(ProvideParams calldata params) public {
         Lender storage _lender = lender[params.tickLower][msg.sender];
         //Add liquidity to pool
-        (uint128 liquidity, , , ) = addLiquidity(tokenA, tokenB, fee, params.tickLower, params.tickLower + tickSpacing, params.amountA, params.amountB);   
-        require(liquidity > 0, "provide: insufficient amount");     
+        (, uint256 amountA, uint256 amountB, ) = addLiquidity(tokenA, tokenB, fee, params.tickLower, params.tickLower + tickSpacing, params.liquidity);
+        require(params.liquidity > 0, "provide: insufficient amount"); 
+        require(amountA <= params.amountMaxA && amountB <= params.amountMaxB, "provide: max amount deposit");
         //Update feegrowth lender
         updateFeeGrowth(params.tickLower);
         updateLenderFee(params.tickLower);
         //Store lender position
         uint128 locked = _lender.locked;
         uint256 blocknumber = _lender.blocknumber;
-        assets[params.tickLower].liquidity += liquidity; 
-        _lender.liquidity += liquidity;
-        _lender.locked = blocknumber < block.number ? liquidity : locked + liquidity;
+        assets[params.tickLower].liquidity += params.liquidity; 
+        _lender.liquidity += params.liquidity;
+        _lender.locked = blocknumber < block.number ? params.liquidity : locked + params.liquidity;
         _lender.blocknumber = block.number;
-        emit Provide(msg.sender, params.tickLower, liquidity, params.amountA, params.amountB);     
+        emit Provide(msg.sender, params.tickLower, params.liquidity, amountA, amountB);     
     }
 
     function take(TakeParams calldata params) public returns(uint256 amountA, uint256 amountB) {      
