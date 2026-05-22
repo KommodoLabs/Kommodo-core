@@ -4,29 +4,31 @@ pragma solidity =0.8.24;
 import './interfaces/IKommodo.sol';
 import './Connector.sol';
 
-/**
-* @dev Kommodo - permissionless lending protocol                            
-*/
 contract Kommodo is IKommodo, Connector {
     using SafeCast for uint256;
     using SafeCast for int256;
     using SafeCast for uint128;
     using SafeCast for int128;
 
-    //AMM pool variables
-    address public tokenA;                                           
-    address public tokenB;
-    uint24 public fee;
-    int24 public tickSpacing;
-    //Lending variable
-    uint24 public interest;
-    
-    //Lender mappings
-    mapping(int24 => Assets) public assets;
-    mapping(int24 => mapping(address => Lender)) public lender;
-    mapping(int24 => mapping(address => Withdraws)) public withdraws;
-    //Borrower mappings
-    mapping(bytes32 => Loan) public borrower;
+    /// @inheritdoc IKommodo
+    address public override tokenA;   
+    /// @inheritdoc IKommodo
+    address public override tokenB;
+    /// @inheritdoc IKommodo
+    uint24 public override fee;
+    /// @inheritdoc IKommodo
+    int24 public override tickSpacing;
+
+    /// @inheritdoc IKommodo
+    uint24 public override interest;
+    /// @inheritdoc IKommodo
+    mapping(int24 => Assets) public override assets;
+    /// @inheritdoc IKommodo
+    mapping(int24 => mapping(address => Lender)) public override lender;
+    /// @inheritdoc IKommodo
+    mapping(int24 => mapping(address => Withdraws)) public override withdraws;
+    /// @inheritdoc IKommodo
+    mapping(bytes32 => Loan) public override borrower;
 
     constructor(CreateParams memory params) {
         require(params.multiplier * params.fee <= 1e6, "create: interest overflow");
@@ -39,7 +41,8 @@ contract Kommodo is IKommodo, Connector {
     }
 
     // Lend functions
-    function provide(ProvideParams calldata params) public {
+    /// @inheritdoc IKommodo
+    function provide(ProvideParams calldata params) public override {
         Lender storage _lender = lender[params.tickLower][msg.sender];
         //Add liquidity to pool
         (, uint256 amountA, uint256 amountB, ) = addLiquidity(tokenA, tokenB, fee, params.tickLower, params.tickLower + tickSpacing, params.liquidity);
@@ -58,14 +61,15 @@ contract Kommodo is IKommodo, Connector {
         emit Provide(msg.sender, params.tickLower, params.liquidity, amountA, amountB);     
     }
 
-    function take(TakeParams calldata params) public returns(uint256 amountA, uint256 amountB) {      
+    /// @inheritdoc IKommodo
+    function take(TakeParams calldata params) public override returns(uint256 amountA, uint256 amountB) {      
         Assets storage _assets = assets[params.tickLower];
         Lender storage _lender = lender[params.tickLower][msg.sender];  
         Withdraws storage _withdraws = withdraws[params.tickLower][msg.sender];
         require(_assets.liquidity - _assets.locked >= params.liquidity, "take: insufficient liquidity");
         //Remove liquidity from pool
         ( amountA, amountB, ) = removeLiquidity(tokenA, tokenB, fee, params.tickLower, params.tickLower + tickSpacing, params.liquidity);  
-        collectLiquidity(tokenA, tokenB, address(this), fee, params.tickLower, params.tickLower + tickSpacing, amountA.toUint128(), amountB.toUint128()); 
+        collectAmounts(tokenA, tokenB, address(this), fee, params.tickLower, params.tickLower + tickSpacing, amountA.toUint128(), amountB.toUint128()); 
         require(amountA >= params.amountMinA && amountB >= params.amountMinB, "take: insufficient amounts");
         //Update feegrowth
         updateFeeGrowth(params.tickLower);
@@ -83,12 +87,13 @@ contract Kommodo is IKommodo, Connector {
         emit Take(msg.sender, params.tickLower, params.liquidity, amountA, amountB);
     }
 
+    /// @inheritdoc IKommodo
     function withdraw(
         int24 tickLower,
         address recipient, 
         uint128 amount0Requested,
         uint128 amount1Requested
-    ) public {
+    ) public override {
         Assets storage _assets = assets[tickLower];
         Withdraws storage _withdraws = withdraws[tickLower][msg.sender];
         //Update feegrowth 
@@ -109,8 +114,8 @@ contract Kommodo is IKommodo, Connector {
     }
 
     //Borrow functions
-    //Notice: no checks on effective (minimal) collateral
-    function open(OpenParams calldata params) public {  
+    /// @inheritdoc IKommodo
+    function open(OpenParams calldata params) public override {  
         Assets storage _assets = assets[params.tickBor];  
         Loan storage loan = borrower[getKey(msg.sender, params.tickBor, params.token0)];
         require(getFee(params.colAmount).toUint128() > 0, "open: no zero fee");   
@@ -141,11 +146,12 @@ contract Kommodo is IKommodo, Connector {
         //Withdraw borrowed amount
         (uint256 borA, uint256 borB, ) = removeLiquidity(tokenA, tokenB, fee, params.tickBor, params.tickBor + tickSpacing, params.liquidityBor);
         require(borA >= params.borAMin && borB >= params.borBMin, "open: insufficient amounts");
-        collectLiquidity(tokenA, tokenB, msg.sender, fee, params.tickBor, params.tickBor + tickSpacing, borA.toUint128(), borB.toUint128());  
+        collectAmounts(tokenA, tokenB, msg.sender, fee, params.tickBor, params.tickBor + tickSpacing, borA.toUint128(), borB.toUint128());  
         emit Open(params.token0, msg.sender, params.tickBor, params.liquidityBor, params.colAmount, loan.interest, borA, borB);
     }
 
-    function adjust(AdjustParams calldata params) public {
+    /// @inheritdoc IKommodo
+    function adjust(AdjustParams calldata params) public override {
         Assets storage _assets = assets[params.tickBor];  
         Loan storage loan = borrower[getKey(msg.sender, params.tickBor, params.token0)];
         require(loan.start != 0, "adjust: no open loan");   
@@ -169,7 +175,8 @@ contract Kommodo is IKommodo, Connector {
         emit Adjust(params.token0, msg.sender, params.tickBor, params.liquidityBor, params.amountCol, loan.interest, borA, borB);  
     }
 
-    function close(CloseParams calldata params) public {
+    /// @inheritdoc IKommodo
+    function close(CloseParams calldata params) public override {
         Assets storage _assets = assets[params.tickBor];  
         Loan storage loan = borrower[getKey(params.owner, params.tickBor, params.token0)];
         //Check loan position 
@@ -198,7 +205,8 @@ contract Kommodo is IKommodo, Connector {
         emit Close(params.token0, msg.sender, params.owner, params.tickBor, liquidityBor, amountCol, borA, borB);  
     }
 
-    function setInterest(bool token0,  int24 tickBor, int128 delta) public {
+    /// @inheritdoc IKommodo
+    function setInterest(bool token0,  int24 tickBor, int128 delta) public override {
         //Get loan position
         Assets storage _assets = assets[tickBor];  
         Loan storage loan = borrower[getKey(msg.sender, tickBor, token0)];
@@ -224,11 +232,14 @@ contract Kommodo is IKommodo, Connector {
         if (delta < 0){TransferHelper.safeTransfer(token, msg.sender, (-delta).toUint128());}
     }
 
+    /// @dev Updates feegrowth for the kommodo pool based on fees earned in the Uniswap v3 pool.
+    /// @dev only contains fees because every non zero Uniswap v3 remove call is directly followed by a collect.
+    /// @param tick The tick for which the fee is updated
     function updateFeeGrowth(int24 tick) internal {
         Assets storage _assets = assets[tick];  
         if (_assets.liquidity - _assets.locked != 0){    
             (uint128 tokensOwed0, uint128 tokensOwed1) = tokensOwed(tokenA, tokenB, fee, tick, tick + tickSpacing);
-            (uint256 collect0, uint256 collect1, ) = collectLiquidity(
+            (uint256 collect0, uint256 collect1, ) = collectAmounts(
                 tokenA, 
                 tokenB, 
                 address(this), 
@@ -242,7 +253,9 @@ contract Kommodo is IKommodo, Connector {
             unchecked{_assets.feeGrowth1X128 += FullMath.mulDiv(collect1, FixedPoint128.Q128, _assets.liquidity);}
         }      
     }  
-    
+
+    /// @dev Updates feegrowth for the lender position based on the pools feegrowth
+    /// @param tick The tick for which the fee is updated
     function updateLenderFee(int24 tick) internal {
         Assets storage _assets = assets[tick];  
         Lender storage _provider = lender[tick][msg.sender];
@@ -259,14 +272,15 @@ contract Kommodo is IKommodo, Connector {
         _withdraws.amountA += tokensOwed0;
         _withdraws.amountB += tokensOwed1;  
     }   
-    
+
     //View & Pure functions
+    /// @inheritdoc IKommodo
     function checkRequirement(
         bool token0, 
         int24 tickBor, 
         int128 liquidity, 
         uint128 col
-    ) public view returns(bool success) {       
+    ) public view override returns(bool success) {       
         //Notice: bor0 & bor1 are positive because liquidity is positive
         int256 bor0 = SqrtPriceMath.getAmount0Delta(
                 TickMath.getSqrtRatioAtTick(tickBor),
@@ -286,19 +300,22 @@ contract Kommodo is IKommodo, Connector {
     }
 
     //Fee = liquidity * start fee
-    function getFee(uint256 amount) public view returns(uint256){
+    /// @inheritdoc IKommodo
+    function getFee(uint256 amount) public view override returns(uint256){
         return(FullMath.mulDivRoundingUp(amount, fee, 1e6));
     }
 
     //Interest = amount * year rate * seconds used / 31536000 
-    function getInterest(uint256 amount, uint256 start, uint256 end) public view returns(uint256){
+    /// @inheritdoc IKommodo
+    function getInterest(uint256 amount, uint256 start, uint256 end) public view override returns(uint256){
         uint256 deltaTime = end - start;
         uint256 yearly = FullMath.mulDivRoundingUp(amount, interest, 1e6);
         return(FullMath.mulDivRoundingUp(yearly, deltaTime, 31536000));
     }
 
     //End unix time = start + (interest provided * 31536000 / amount * year rate)
-    function getLoanEnd(address owner, int24 tickBor, bool token0) public view returns(uint256){
+    /// @inheritdoc IKommodo
+    function getLoanEnd(address owner, int24 tickBor, bool token0) public view override returns(uint256){
         Loan storage loan = borrower[getKey(owner, tickBor, token0)];
         uint256 yearly = FullMath.mulDivRoundingUp(loan.amountCol, interest, 1e6);
         uint256 deltaTime = FullMath.mulDiv(loan.interest, 31536000, yearly);
@@ -306,7 +323,8 @@ contract Kommodo is IKommodo, Connector {
     }
 
     //Loan identification key
-    function getKey(address owner, int24 tickBor, bool token0) public pure returns(bytes32){
+    /// @inheritdoc IKommodo
+    function getKey(address owner, int24 tickBor, bool token0) public pure override returns(bytes32){
         return(keccak256(abi.encode(owner, tickBor, token0)));
     }
 }

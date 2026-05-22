@@ -8,75 +8,56 @@ import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import '@uniswap/v3-periphery/contracts/libraries/PositionKey.sol';
 
+import './interfaces/IConnector.sol';
 import './libraries/TickMath.sol';
 import './libraries/PoolAddress.sol';
 import './libraries/SqrtPriceMath.sol'; 
 import './libraries/LiquidityAmounts.sol';
 import './libraries/CallbackValidation.sol';
 
-/**
-* @dev Connector - library to connect to AMM                          
-*/
-abstract contract Connector is IUniswapV3MintCallback {
+abstract contract Connector is IConnector, IUniswapV3MintCallback {
     
-    address public factory;
+    /// @inheritdoc IConnector
+    address public override factory;
 
+    // Uniswap v3 callback data
     struct MintCallbackData {
+        // Uniswap v3 pool identifier based on token0/token1/fee
         PoolAddress.PoolKey poolKey;
+        // Uniswap v3 pool returned payer address
         address payer;
     }
 
-    function initialize(address _factory) public {
+    /// @inheritdoc IConnector
+    function initialize(address _factory) public override {
         require(_factory != address(0), "Connector: false factory"); 
         require(factory == address(0), "Connector: factory already initialized"); 
         factory = _factory;
     }
 
+    /// @inheritdoc IUniswapV3MintCallback
     function uniswapV3MintCallback(
         uint256 amount0Owed,
         uint256 amount1Owed,
         bytes calldata data
-    ) external override {
+    ) external {
         MintCallbackData memory decoded = abi.decode(data, (MintCallbackData));
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
-        TransferHelper.safeTransferFrom(decoded.poolKey.token0, decoded.payer, msg.sender, amount0Owed);
-        TransferHelper.safeTransferFrom(decoded.poolKey.token1, decoded.payer, msg.sender, amount1Owed);
+        if (amount0Owed > 0) TransferHelper.safeTransferFrom(decoded.poolKey.token0, decoded.payer, msg.sender, amount0Owed);
+        if (amount1Owed > 0) TransferHelper.safeTransferFrom(decoded.poolKey.token1, decoded.payer, msg.sender, amount1Owed);
     }
 
-    function addLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
-        internal 
-        returns(
-            uint128 liquidity,
-            uint256 amount0,
-            uint256 amount1,
-            IUniswapV3Pool pool
-        )
-    {
-        PoolAddress.PoolKey memory poolKey = PoolAddress.PoolKey({token0: tokenA, token1: tokenB, fee: poolFee});
-        pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey)); 
-        // compute the liquidity amount
-        {
-            (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
-            uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
-            uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);            
-            liquidity = LiquidityAmounts.getLiquidityForAmounts(
-                sqrtPriceX96,
-                sqrtRatioAX96,
-                sqrtRatioBX96,
-                amountA,
-                amountB
-            );
-        } 
-        // mint pool position
-        (amount0, amount1) = pool.mint(
-            address(this),
-            tickLower,
-            tickUpper,
-            liquidity,
-            abi.encode(MintCallbackData({poolKey: poolKey, payer: msg.sender}))
-        );
-    }
-
+    /// @notice Add liquidity to Uniswap v3 pool
+    /// @param tokenA The first token of the Uniswap v3 pool
+    /// @param tokenB The second token of the Uniswap v3 pool
+    /// @param poolFee The fee of the Uniswap v3 pool
+    /// @param tickLower The lower tick position to add liqudity
+    /// @param tickUpper The upper tick position to add liqudity
+    /// @param amount The liquidity amount to add
+    /// @return liquidity The liquidity added
+    /// @return amount0 The token0 amount deposited for the liquidity
+    /// @return amount1 The token1 amount deposited for the liquidity
+    /// @return pool The Uniswap v3 pool address
     function addLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amount)
         internal 
         returns(
@@ -99,6 +80,16 @@ abstract contract Connector is IUniswapV3MintCallback {
         );
     }
 
+    /// @notice Remove liquidity from Uniswap v3 pool
+    /// @param tokenA The first token of the Uniswap v3 pool
+    /// @param tokenB The second token of the Uniswap v3 pool
+    /// @param poolFee The fee of the Uniswap v3 pool
+    /// @param tickLower The lower tick position to remove liqudity
+    /// @param tickUpper The upper tick position to remove liqudity
+    /// @param liquidity The liquidity amount to remove
+    /// @return amount0 The token0 amount removed for the liquidity
+    /// @return amount1 The token1 amount removed for the liquidity
+    /// @return pool The Uniswap v3 pool address
     function removeLiquidity(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 liquidity) 
         internal 
         returns(
@@ -112,7 +103,19 @@ abstract contract Connector is IUniswapV3MintCallback {
         (amount0, amount1) = pool.burn(tickLower, tickUpper, liquidity);
     }
 
-    function collectLiquidity(address tokenA, address tokenB, address receiver, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
+    /// @notice Collect amounts from Uniswap v3 pool
+    /// @param tokenA The first token of the Uniswap v3 pool
+    /// @param tokenB The second token of the Uniswap v3 pool
+    /// @param receiver The receiver of the withdrawn token amounts
+    /// @param poolFee The fee of the Uniswap v3 pool
+    /// @param tickLower The lower tick position to remove liqudity
+    /// @param tickUpper The upper tick position to remove liqudity
+    /// @param amountA The maximum token0 amount to withdraw when available
+    /// @param amountB The maximum token1 amount to withdraw when available
+    /// @return amount0 The token0 amount withdrawn 
+    /// @return amount1 The token1 amount withdrawn
+    /// @return pool The Uniswap v3 pool address
+    function collectAmounts(address tokenA, address tokenB, address receiver, uint24 poolFee, int24 tickLower, int24 tickUpper, uint128 amountA, uint128 amountB) 
         internal 
         returns(
             uint256 amount0,
@@ -131,9 +134,11 @@ abstract contract Connector is IUniswapV3MintCallback {
         );
     }
  
+    /// @inheritdoc IConnector
     function tokensOwed(address tokenA, address tokenB, uint24 poolFee, int24 tickLower, int24 tickUpper) 
         public
         view
+        override
         returns(
             uint128 tokensOwed0,
             uint128 tokensOwed1

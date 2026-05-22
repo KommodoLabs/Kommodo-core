@@ -13,7 +13,12 @@ module.exports = {
         enabled: true,
         runs: 800,
         details: { yul: false},
-      } 
+      },
+      outputSelection: {
+        "*": {
+          "*": ["userdoc", "devdoc"]
+        }
+      }
     }
   },
   

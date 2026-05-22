@@ -3,16 +3,21 @@ pragma solidity =0.8.24;
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 
+import './interfaces/IKommodoFactory.sol';
 import './interfaces/IKommodo.sol';
 import './Kommodo.sol';
 
-contract KommodoFactory {
+contract KommodoFactory is IKommodoFactory {
     
-    address public factory;
-    uint24 public multiplier;
+    /// @inheritdoc IKommodoFactory
+    address public override factory;
+    /// @inheritdoc IKommodoFactory
+    uint24 public override multiplier;
 
-    mapping(address => mapping(address => mapping(uint24 => address))) public kommodo;
-    address[] public allKommodo;
+    /// @inheritdoc IKommodoFactory
+    mapping(address => mapping(address => mapping(uint24 => address))) public override kommodo;
+    /// @inheritdoc IKommodoFactory
+    address[] public override allKommodo;
     
     constructor(
         address _factory, 
@@ -24,15 +29,17 @@ contract KommodoFactory {
         multiplier = _multiplier;
     }
 
-    function allKommodoLength() external view returns (uint) {
+    /// @inheritdoc IKommodoFactory
+    function allKommodoLength() external override view returns (uint) {
         return allKommodo.length;
     }
 
+    /// @inheritdoc IKommodoFactory
     function createKommodo(
         address assetA, 
         address assetB, 
         uint24 poolFee
-    ) public returns (address) {
+    ) public override returns (address) {
         require(assetA != assetB, "create: identical assets");
         (address token0, address token1) = assetA < assetB ? (assetA, assetB) : (assetB, assetA);
         require(token0 != address(0), 'create: no address zero');
