@@ -113,7 +113,6 @@ describe("Kommodo_gas", function () {
         tokenAdress1,
         500,
         sqrtPrice,
-        {gasLimit: 5000000}
     )
     const poolAddress = await factory.connect(owner).getPool(
         weth.address,
@@ -138,7 +137,6 @@ describe("Kommodo_gas", function () {
       tokenAdress0,
       tokenAdress1,
       500,
-      {gasLimit: 5000000}
     )
     const kommodoAddress = await kommodoFactory.connect(owner).kommodo(
       tokenAdress0,

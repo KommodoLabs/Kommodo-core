@@ -119,7 +119,6 @@ describe("Kommodo_test", function () {
         tokenAdress1,
         500,
         sqrtPrice,
-        {gasLimit: 5000000}
     )
     const poolAddress = await factory.connect(owner).getPool(
         weth.address,
@@ -144,8 +143,9 @@ describe("Kommodo_test", function () {
       tokenAdress0,
       tokenAdress1,
       500,
-      {gasLimit: 5000000}
     )
+    let length = await kommodoFactory.allKommodoLength()
+    expect(length).to.equal(1)
     const kommodoAddress = await kommodoFactory.connect(owner).kommodo(
       tokenAdress0,
       tokenAdress1,
@@ -312,12 +312,12 @@ describe("Kommodo_test", function () {
         liquidityBor: pre_loan.liquidityBor.div(2), 
         borAMax: BigInt(amount),
         borBMax: BigInt(amount),
-        amountCol: 0, 
+        amountCol: 1, 
         interest:  0
       })  
       //Checks   
       expect(await tokenA.balanceOf(account1.address)).to.equal(amount.plus("24").toString())
-      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("10015").toString()) 
+      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("10014").toString()) 
       post_loan = await kommodo.borrower(borrowKey)
       expect(post_loan.liquidityBor).to.equal(pre_loan.liquidityBor.div(2))
       const timeStamp = (await ethers.provider.getBlock("latest")).timestamp
@@ -546,8 +546,7 @@ describe("Kommodo_test", function () {
       await mockRouter.connect(account2).swap(mockRouter.address, true, "100", "79228162514264337593543950336", "0x")
     })
   })
-
-
+  
   describe("Kommodo_test_unhappy", function () {         
     //Provide()
     it('Should fail provide for zero amountA and amountB', async function () {
@@ -567,7 +566,6 @@ describe("Kommodo_test", function () {
         "0x0000000000000000000000000000000000000001",
         "0x0000000000000000000000000000000000000002",
         500,
-        {gasLimit: 5000000}
       )
       let KommodoNAMM = await kommodoFactory.kommodo("0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000002", 500)
       kommodoNAMM = new Contract(KommodoNAMM, artifacts.Kommodo.abi, provider)
@@ -725,6 +723,42 @@ describe("Kommodo_test", function () {
       await tokenA.connect(account1).approve(nonfungibleLendManager.address, amount.toString())
 		  await weth.connect(account1).approve(nonfungibleLendManager.address, amount.toString())
     });
+    it('Should deploy kommodo pool', async function () { 
+      //Create new tokens
+      Tokens = await ethers.getContractFactory('Token', account2)
+      tokenC = await Tokens.deploy()
+      tokenD = await Tokens.deploy()
+      //Create new uniswapv3 pool
+      let tokenAdress2
+      let tokenAdress3
+      if(tokenC.address < tokenD.address) {
+        tokenAdress2 = tokenC.address
+        tokenAdress3 = tokenD.address
+      } else {
+        tokenAdress2 = tokenD.address
+        tokenAdress3 = tokenC.address
+      } 
+      await nonfungiblePositionManager.connect(account2).createAndInitializePoolIfNecessary(
+        tokenAdress2,
+        tokenAdress3,
+        500,
+        encodePriceSqrt(1,1),
+      )
+      //deploy kommodo pool through NFLM
+      await nonfungibleLendManager.connect(account2).deploy(
+        tokenC.address,
+        tokenD.address,
+        500
+      )
+      let length = await kommodoFactory.allKommodoLength()
+      expect(length).to.equal(3)
+      let newPool = await kommodoFactory.connect(account2).kommodo(tokenC.address, tokenD.address, 500)
+      //Check approval
+      let approvalC = await tokenC.allowance(nonfungibleLendManager.address, newPool)
+      let approvalD = await tokenD.allowance(nonfungibleLendManager.address, newPool)
+      expect(approvalC).to.equal(ethers.constants.MaxUint256)
+      expect(approvalD).to.equal(ethers.constants.MaxUint256)
+    })
     it('Should mint NFT', async function () { 
       before_balanceA = await tokenA.balanceOf(account2.address)
       before_balanceB = await weth.balanceOf(account2.address)
@@ -869,6 +903,21 @@ describe("Kommodo_test", function () {
       after_balanceB = await weth.balanceOf(account2.address)
       expect(after_balanceA.sub(before_balanceA)).to.equal("0") 
       expect(after_balanceB.sub(before_balanceB)).to.equal("5") 
+    })
+    it('Should burn NFT', async function () { 
+      let liq_nft = (await nonfungibleLendManager.connect(account2).position(1)).liquidity
+      await nonfungibleLendManager.connect(account2).take(
+        {
+          tokenId: 1,
+          liquidity: liq_nft,                         
+          amountMinA: 0,                   
+          amountMinB: 0,
+          recipient: account2.address      
+        }
+      )
+      await nonfungibleLendManager.connect(account2).burn(1)
+      let nft = await nonfungibleLendManager.connect(account2).position(1)
+      expect(nft.blocknumber.toString()).to.equal("0") 
     })
   })
   describe("Kommodo_test_solvency_requirement", function () {   

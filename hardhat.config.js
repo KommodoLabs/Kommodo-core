@@ -1,6 +1,7 @@
 require("@nomiclabs/hardhat-waffle");
 require('hardhat-contract-sizer');
 require("@nomicfoundation/hardhat-verify");
+require("solidity-coverage");
 
 require("dotenv").config();
 
