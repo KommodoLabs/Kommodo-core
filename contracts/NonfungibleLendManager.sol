@@ -2,7 +2,8 @@
 pragma solidity =0.8.24;
 
 import '@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol';
-import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
@@ -12,7 +13,8 @@ import './interfaces/IKommodoFactory.sol';
 import './interfaces/IKommodo.sol';
 import './libraries/FullMath.sol';
 
-contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
+contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable, ReentrancyGuard {
+    using SafeERC20 for IERC20; 
 
     /// @inheritdoc INonfungibleLendManager
     IKommodoFactory public override factory;
@@ -37,10 +39,8 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
     function poolApprove(address tokenA, address tokenB, uint24 poolFee) public override {
         address pool = factory.kommodo(tokenA, tokenB, poolFee);
         require(pool != address(0), "poolApprove: zero pool");
-        IERC20(tokenA).approve(pool, 0); 
-        IERC20(tokenA).approve(pool, type(uint256).max);
-        IERC20(tokenB).approve(pool, 0); 
-        IERC20(tokenB).approve(pool, type(uint256).max);
+        IERC20(tokenA).forceApprove(pool, type(uint256).max); 
+        IERC20(tokenB).forceApprove(pool, type(uint256).max);
     }
 
     /// @inheritdoc INonfungibleLendManager
@@ -50,7 +50,7 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
     }
 
     /// @inheritdoc INonfungibleLendManager
-    function mint(MintParams calldata params) public override {
+    function mint(MintParams calldata params) public override nonReentrant {
         IKommodo pool = IKommodo(factory.kommodo(params.assetA, params.assetB, params.poolFee));
         //Transfer amounts IN
         if(params.amountMaxA > 0) {TransferHelper.safeTransferFrom(params.assetA, msg.sender, address(this), params.amountMaxA);}
@@ -65,10 +65,8 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
                 amountMaxB: params.assetA < params.assetB ? params.amountMaxB : params.amountMaxA
             })
         );
-        //Mint NFT
-        uint256 tokenId;
-        _safeMint(msg.sender, tokenId = nextId++);
         //Store position
+        uint256 tokenId = nextId++;
         (   uint128 post_liquidity, , 
             uint256 feeGrowth0X128, 
             uint256 feeGrowth1X128, 
@@ -85,15 +83,17 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
             0,
             0
         );
+        //Mint NFT
+        _safeMint(msg.sender, tokenId );
         //Transfer RETURN amounts
         uint256 balanceA = IERC20(params.assetA).balanceOf(address(this));
         uint256 balanceB = IERC20(params.assetB).balanceOf(address(this));
         if(balanceA > 0) {TransferHelper.safeTransfer(params.assetA, msg.sender, balanceA);}
-        if(balanceA > 0) {TransferHelper.safeTransfer(params.assetB, msg.sender, balanceB);}
+        if(balanceB > 0) {TransferHelper.safeTransfer(params.assetB, msg.sender, balanceB);}
     }
 
     /// @inheritdoc INonfungibleLendManager
-    function provide(ProvideParams calldata params) public override {
+    function provide(ProvideParams calldata params) public override nonReentrant {
         require(params.tokenId != 0, "provide: invalid Id");
         Position storage _position = position[params.tokenId];
         IKommodo pool = IKommodo(_position.pool);
@@ -149,7 +149,7 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
     }
 
     /// @inheritdoc INonfungibleLendManager
-    function take(TakeParams calldata params) public override isAuthorizedForToken(params.tokenId) {
+    function take(TakeParams calldata params) public override isAuthorizedForToken(params.tokenId) nonReentrant {
         Position storage _position = position[params.tokenId];
         IKommodo pool = IKommodo(_position.pool);
         //Remove liquidity from pool
@@ -194,7 +194,7 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
         _position.feeGrowth0X128 = feeGrowth0X128;
         _position.feeGrowth1X128 = feeGrowth1X128;
         //Withdraw amounts 
-        withdraw(WithdrawParams({
+        startWithdraw(WithdrawParams({
             tokenId: params.tokenId, 
             amountA: type(uint128).max, 
             amountB: type(uint128).max, 
@@ -203,7 +203,13 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
     }
 
     /// @inheritdoc INonfungibleLendManager
-    function withdraw(WithdrawParams memory params) public override isAuthorizedForToken(params.tokenId){
+    function withdraw(WithdrawParams memory params) public override isAuthorizedForToken(params.tokenId) nonReentrant {
+        startWithdraw(params);
+    }
+
+    /// @dev Internal function to split from public function for nonreentrant modifier.
+    /// @param params WithdrawParams tokenId/amountA/amountB/recipient
+    function startWithdraw(WithdrawParams memory params) internal {
         Position storage _position = position[params.tokenId];
         IKommodo pool = IKommodo(_position.pool);
         require(params.recipient != address(0), "withdraw: zero recipient");
@@ -249,7 +255,7 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable {
     }
 
     /// @inheritdoc INonfungibleLendManager
-    function burn(uint256 tokenId) public override isAuthorizedForToken(tokenId){
+    function burn(uint256 tokenId) public override isAuthorizedForToken(tokenId) nonReentrant {
         Position storage _position = position[tokenId];
         require(_position.blocknumber != 0, "burn: no position");
         require(_position.liquidity == 0 && _position.withdrawA == 0 && _position.withdrawB == 0, 'burn: not empty');

@@ -75,7 +75,7 @@ interface IKommodo {
     /// @param borB The assetB amount returned for the liquidity
     event Adjust(
         bool indexed token0,
-        address owner,
+        address indexed owner,
         int24 indexed tickBor,
         uint128 liquidityBor,
         uint256 amountCol,
@@ -104,6 +104,25 @@ interface IKommodo {
         uint256 borB
     );
 
+
+
+
+    // @notice Emitted when interest is adjusted
+    /// @param token0 The bool value indicating use of collateral token0 or token1
+    /// @param owner The address that owns the position
+    /// @param tickBor The tick of the borrow position
+    /// @param interest The new interest amount of the position
+    /// @param delta The change (deposit or withdraw) of interest for the position
+    event Interest(
+        bool indexed token0,
+        address indexed owner,
+        int24 indexed tickBor,
+        uint128 interest,
+        int128 delta    
+    );
+
+
+
     /// @notice The first of the two tokens of the pool, sorted by address
     /// @return token contract address
     function tokenA() external view returns (address);
@@ -123,7 +142,7 @@ interface IKommodo {
     /// @notice The interest rate for the kommodo pool
     /// @dev Determined by the multiplier times the underlying Uniswap v3 pool fee
     /// @return annual interest
-    function interest() external view returns (uint24);
+    function rate() external view returns (uint24);
 
     // pool info stored for each individual tick 
     struct Assets { 
@@ -156,7 +175,7 @@ interface IKommodo {
         // liquidity deposited in the position
         uint128 liquidity;
         // liquidity locked for withdraw 
-        uint128 locked;
+        uint128 paused;
         // fee growth of token0 for this position 
         uint256 feeGrowth0X128;
         // fee growth of token1 for this position 

@@ -28,10 +28,7 @@ abstract contract Connector is IConnector, IUniswapV3MintCallback {
         address payer;
     }
 
-    /// @inheritdoc IConnector
-    function initialize(address _factory) public override {
-        require(_factory != address(0), "Connector: false factory"); 
-        require(factory == address(0), "Connector: factory already initialized"); 
+    constructor(address _factory) {
         factory = _factory;
     }
 

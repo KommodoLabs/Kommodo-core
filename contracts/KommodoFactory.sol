@@ -10,9 +10,9 @@ import './Kommodo.sol';
 contract KommodoFactory is IKommodoFactory {
     
     /// @inheritdoc IKommodoFactory
-    address public override factory;
+    address public immutable override factory;
     /// @inheritdoc IKommodoFactory
-    uint24 public override multiplier;
+    uint24 public immutable override multiplier;
 
     /// @inheritdoc IKommodoFactory
     mapping(address => mapping(address => mapping(uint24 => address))) public override kommodo;

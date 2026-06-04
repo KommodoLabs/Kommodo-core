@@ -8,10 +8,6 @@ interface IConnector {
     /// @return The address of the Uniswap v3 factory
     function factory() external view returns (address);
 
-    /// @notice Stores the Uniswap v3 factory 
-    /// @param _factory The address of the Uniswap v3 factory
-    function initialize(address _factory) external;
-
     /// @notice Returns the current tokens owed from the Uniswap v3 pool
     /// @param tokenA The first token of the Uniswap v3 pool
     /// @param tokenB The second token of the Uniswap v3 pool

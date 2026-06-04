@@ -367,7 +367,7 @@ describe("Kommodo_test", function () {
       //Check unix end time for interest
       current = (await ethers.provider.getBlock('latest')).timestamp
       end = await kommodo.getLoanEnd(account1.address, ticklower, false)
-      fee = await kommodo.interest()
+      fee = await kommodo.rate()
       expected = interest / (fee * amount / 10**6) * 31536000
       expect(end - current).to.equal(expected)
       //Check interest calculation from end time
