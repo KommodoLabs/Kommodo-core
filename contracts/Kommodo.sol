@@ -211,6 +211,15 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
        storeInterest(token0, tickBor, delta);
     }
 
+    /// @inheritdoc IKommodo
+    function updateInterest(bool token0,  int24 tickBor, address owner) public override nonReentrant {
+        Loan storage loan = borrower[getKey(owner, tickBor, token0)];
+        uint256 used = getInterest(loan.amountCol, loan.start, block.timestamp); 
+        require(loan.interest >= used, "updateInterest: unclosed loan"); 
+        loan.interest = loan.interest - used.toUint128();
+        loan.start = block.timestamp;
+    }
+
     /// @dev Internal function to split from public function for nonreentrant modifier.
     /// @param token0 bool value indicating use of collateral token0 or token1 for borrow position
     /// @param tickBor tick at which borrowed
@@ -222,12 +231,12 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
         uint256 used = getInterest(loan.amountCol, loan.start, block.timestamp);  
         address token = token0 ? tokenA : tokenB;
         //Check interest requirements and deposit positive delta
-        require(loan.interest >= used, "open: unclosed loan"); 
+        require(loan.interest >= used, "storeInterest: unclosed loan"); 
         if(delta > 0){
             uint256 balanceBefore = IERC20(token).balanceOf(address(this));      
             TransferHelper.safeTransferFrom(token, msg.sender, address(this), (delta).toUint128());
             uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
-            require(received == ((delta).toUint128()), "open: unsufficient amount");
+            require(received == ((delta).toUint128()), "storeInterest: unsufficient amount");
         }
         loan.interest = delta > 0 ? loan.interest + delta.toUint128() - used.toUint128() : loan.interest - (-delta).toUint128() - used.toUint128();
         loan.start = block.timestamp;

@@ -284,6 +284,17 @@ describe("Kommodo_test", function () {
       expect(await tokenA.balanceOf(account1.address)).to.equal(balance0Before)
       expect(await weth.balanceOf(account1.address)).to.equal(balance1Before.sub("2"))
     })
+    it('Should allow anyone to update interest used loan', async function () {
+      borrowKey = await kommodo.getKey(account1.address, ticklower, false)
+      pre_loan = await kommodo.borrower(borrowKey)
+      await kommodo.connect(account2).updateInterest(
+        false,                                //tokenA as collateral
+        ticklower,                            //tick lower borrow
+        account1.address                       //owner
+      )
+      post_loan = await kommodo.borrower(borrowKey)
+      expect(pre_loan.start.add("1")).to.equal(post_loan.start)
+    })
     it('Should decrease interest loan', async function () {
       balance0Before = await tokenA.balanceOf(account1.address)
       balance1Before = await weth.balanceOf(account1.address)
@@ -343,7 +354,7 @@ describe("Kommodo_test", function () {
       available_liquidity = assets.liquidity - assets.locked
       total_liquidity_after = await kommodo.assets(ticklower)
       expect(await tokenA.balanceOf(account1.address)).to.equal(amount.minus("1").toString()) //Rounding 
-      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("9").toString()) //Rounding in the before steps + interest paid
+      expect(await weth.balanceOf(account1.address)).to.equal(amount.minus("10").toString()) //Rounding in the before steps + interest paid
       expect(borrower_after.liquidityBor).to.equal("0")
       expect(borrower_after.interest).to.equal("0")
       expect(borrower_after.start).to.equal("0")      

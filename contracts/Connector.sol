@@ -12,7 +12,6 @@ import './interfaces/IConnector.sol';
 import './libraries/TickMath.sol';
 import './libraries/PoolAddress.sol';
 import './libraries/SqrtPriceMath.sol'; 
-import './libraries/LiquidityAmounts.sol';
 import './libraries/CallbackValidation.sol';
 
 abstract contract Connector is IConnector, IUniswapV3MintCallback {

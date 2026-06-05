@@ -389,6 +389,13 @@ interface IKommodo {
     /// @param delta interest adjustment amount
     function setInterest(bool token0, int24 tickBor, int128 delta) external;
 
+    /// @notice Update interest used for borrow positions
+    /// @dev Allows anyone to update the interest used of active borrow positions.
+    /// @param token0 bool value indicating use of collateral token0 or token1 for borrow position
+    /// @param tickBor tick at which borrowed
+    /// @param owner owner of the borrow positions
+    function updateInterest(bool token0, int24 tickBor, address owner) external;
+
     /// @notice Checks the solvency requirement
     /// @dev Checks that the collateral amount is more then or equal to the borrow amount based on liquidity and collateral type.
     /// @dev Uses a positive collateral margin (based on fee percentage) in the check. This margin is used a incentive for other
