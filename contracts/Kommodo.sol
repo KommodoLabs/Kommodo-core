@@ -143,6 +143,12 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
         }
         //Interest adjust - checks sufficiency
         storeInterest(params.token0, params.tickBor, params.interest);
+        //Withdraw borrowed amount
+        (uint256 borA, uint256 borB, ) = removeLiquidity(tokenA, tokenB, fee, params.tickBor, params.tickBor + tickSpacing, params.liquidityBor);
+        require(borA >= params.borAMin && borB >= params.borBMin, "open: insufficient amounts");
+        collectAmounts(tokenA, tokenB, msg.sender, fee, params.tickBor, params.tickBor + tickSpacing, borA.toUint128(), borB.toUint128());  
+        //Update feegrowth
+        updateFeeGrowth(params.tickBor);
         //Store loan position 
         require(_assets.liquidity - _assets.locked >= params.liquidityBor, "open: insufficient liquidity");
         _assets.locked += params.liquidityBor;    
@@ -151,10 +157,6 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
         //Check solvency requirement
         bool success = checkRequirement(params.token0, params.tickBor, loan.liquidityBor.toInt128(), loan.amountCol);
         require(success, "open: insufficient collateral for borrow");          
-        //Withdraw borrowed amount
-        (uint256 borA, uint256 borB, ) = removeLiquidity(tokenA, tokenB, fee, params.tickBor, params.tickBor + tickSpacing, params.liquidityBor);
-        require(borA >= params.borAMin && borB >= params.borBMin, "open: insufficient amounts");
-        collectAmounts(tokenA, tokenB, msg.sender, fee, params.tickBor, params.tickBor + tickSpacing, borA.toUint128(), borB.toUint128());  
         emit Open(params.token0, msg.sender, params.tickBor, params.liquidityBor, params.colAmount, loan.interest, borA, borB);
     }
 

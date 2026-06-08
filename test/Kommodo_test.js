@@ -256,6 +256,8 @@ describe("Kommodo_test", function () {
         interest: interest
       })
       //Checks
+      assets = await kommodo.assets(ticklower)
+      expect(assets.feeGrowth1X128).to.not.equal("0")
       expect(await tokenA.balanceOf(account1.address)).to.equal(balance0Before.add("49"))
       expect(await weth.balanceOf(account1.address)).to.equal(balance1Before.sub("10015"))
       totalLiquidity = await kommodo.assets(ticklower)
