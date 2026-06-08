@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity =0.8.24;
 
+import "@openzeppelin/contracts/proxy/Clones.sol";
+
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 
 import './interfaces/IKommodoFactory.sol';
@@ -8,11 +10,15 @@ import './interfaces/IKommodo.sol';
 import './Kommodo.sol';
 
 contract KommodoFactory is IKommodoFactory {
+    using Clones for address;
     
     /// @inheritdoc IKommodoFactory
     address public immutable override factory;
     /// @inheritdoc IKommodoFactory
     uint24 public immutable override multiplier;
+    
+    /// @inheritdoc IKommodoFactory
+    address public immutable implementation;
 
     /// @inheritdoc IKommodoFactory
     mapping(address => mapping(address => mapping(uint24 => address))) public override kommodo;
@@ -21,12 +27,15 @@ contract KommodoFactory is IKommodoFactory {
     
     constructor(
         address _factory, 
-        uint24 _multiplier 
+        uint24 _multiplier,
+        address _implementation 
     ) {
-        require(_factory != address(0), "Connector: zero factory"); 
-        require(_multiplier != 0, "Connector: zero mulitplier"); 
+        require(_factory != address(0), "constructor: zero factory"); 
+        require(_multiplier != 0, "constructor: zero mulitplier"); 
+        require(_implementation != address(0), "constructor: zero implementation");
         factory = _factory;
         multiplier = _multiplier;
+        implementation = _implementation;
     }
 
     /// @inheritdoc IKommodoFactory
@@ -45,19 +54,21 @@ contract KommodoFactory is IKommodoFactory {
         require(token0 != address(0), 'create: no address zero');
         require(kommodo[assetA][assetB][poolFee] == address(0), "create: existing pool");
         int24 tickSpacing = IUniswapV3Factory(factory).feeAmountTickSpacing(poolFee);
-        require(tickSpacing != 0, "constructor: invalid poolFee");
-        Kommodo _kommodo = new Kommodo(
+        require(tickSpacing != 0, "create: invalid poolFee");
+        address clone = implementation.clone();
+        IKommodo(clone).initialize(
             IKommodo.CreateParams({
-            factory: factory,
-            tokenA: token0, 
-            tokenB: token1,
-            tickSpacing: tickSpacing, 
-            fee: poolFee,
-            multiplier: multiplier
-        }));
-        kommodo[assetA][assetB][poolFee] = address(_kommodo);
-        kommodo[assetB][assetA][poolFee] = address(_kommodo);
-        allKommodo.push(address(_kommodo));
-        return(address(_kommodo));
+                factory: factory,
+                tokenA: token0,
+                tokenB: token1,
+                tickSpacing: tickSpacing,
+                fee: poolFee,
+                multiplier: multiplier
+            })
+        );
+        kommodo[assetA][assetB][poolFee] = clone;
+        kommodo[assetB][assetA][poolFee] = clone;
+        allKommodo.push(clone);
+        return(clone);
     }
 }

@@ -18,6 +18,10 @@ const { abi: Factory_KOMMODO_ABI, bytecode: Factory_KOMMODO_BYTECODE } = require
   '../artifacts/contracts/KommodoFactory.sol/KommodoFactory.json'
 );
 
+const { abi: KOMMODO_ABI, bytecode: KOMMODO_BYTECODE } = require(
+  '../artifacts/contracts/Kommodo.sol/Kommodo.json'
+);
+
 const { abi: NFLM_ABI, bytecode: NFLM_BYTECODE } = require(
   '../artifacts/contracts/NonfungibleLendManager.sol/NonfungibleLendManager.json'
 );
@@ -72,7 +76,6 @@ async function main() {
   const pool = await factory.getPool(token0, token1, fee);
   console.log("uni Pool deployed at:", pool);
 
-
   // Deploy uniswap mockrouter
   const MOCKROUTER = new ethers.ContractFactory(MOCKROUTER_ABI, MOCKROUTER_BYTECODE, deployer);
   const mockrouter = await MOCKROUTER.deploy();
@@ -80,10 +83,14 @@ async function main() {
   await mockrouter.initialize(pool, token0, token1);
   console.log("Mockrouter deployed at:", mockrouter.address);
 
-
   // Deploy Kommodo Factory
+  const Kommodo = new ethers.ContractFactory(KOMMODO_ABI, KOMMODO_BYTECODE, deployer);
+  const kommodoImplementation = await Kommodo.deploy();
+  await kommodoImplementation.deployed();
+  console.log("KommodoImplementation deployed at:", kommodoImplementation.address);
+
   const Factory_Kommodo = new ethers.ContractFactory(Factory_KOMMODO_ABI, Factory_KOMMODO_BYTECODE, deployer);
-  const factoryKommodo = await Factory_Kommodo.deploy(factory.address, 5);
+  const factoryKommodo = await Factory_Kommodo.deploy(factory.address, 5, kommodoImplementation.address);
   await factoryKommodo.deployed();
   console.log("Factory Kommodo deployed at:", factoryKommodo.address);
 

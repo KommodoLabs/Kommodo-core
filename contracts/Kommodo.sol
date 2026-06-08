@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity =0.8.24;
 
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import '@openzeppelin/contracts/security/ReentrancyGuard.sol'; 
 
 import './interfaces/IKommodo.sol';
@@ -13,16 +14,16 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
     using SafeCast for int128;
 
     /// @inheritdoc IKommodo
-    address public immutable override tokenA;   
+    address public override tokenA;   
     /// @inheritdoc IKommodo
-    address public immutable override tokenB;
+    address public override tokenB;
     /// @inheritdoc IKommodo
-    uint24 public immutable override fee;
+    uint24 public override fee;
     /// @inheritdoc IKommodo
-    int24 public immutable override tickSpacing;
+    int24 public override tickSpacing;
 
     /// @inheritdoc IKommodo
-    uint24 public immutable override rate;
+    uint24 public override rate;
     /// @inheritdoc IKommodo
     mapping(int24 => Assets) public override assets;
     /// @inheritdoc IKommodo
@@ -32,8 +33,14 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
     /// @inheritdoc IKommodo
     mapping(bytes32 => Loan) public override borrower;
 
-    constructor(CreateParams memory params) Connector(params.factory) {
-        require(params.multiplier * params.fee <= 1e6, "create: interest overflow");
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @inheritdoc IKommodo
+    function initialize(CreateParams memory params) external initializer {
+        require(params.multiplier * params.fee <= 1e6, "initialize: interest overflow");
+        __Connector_init(params.factory);
         tokenA = params.tokenA;
         tokenB = params.tokenB;
         fee = params.fee;

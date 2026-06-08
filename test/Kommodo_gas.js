@@ -129,8 +129,10 @@ describe("Kommodo_gas", function () {
     mockRouter = await MockRouter.deploy()
       //console.log('mockRouter', mockRouter.address)      
     //Deploy kommodofactory
+    Kommodo = new ContractFactory(artifacts.Kommodo.abi, artifacts.Kommodo.bytecode, owner)
+    kommodoImplementation = await Kommodo.deploy()
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
-    kommodoFactory = await KommodoFactory.deploy(factory.address, 5)
+    kommodoFactory = await KommodoFactory.deploy(factory.address, 5, kommodoImplementation.address)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
     await kommodoFactory.connect(owner).createKommodo(
@@ -155,7 +157,7 @@ describe("Kommodo_gas", function () {
       //console.log('nonfungibleLendManager', nonfungibleLendManager.address)
 	})
   describe("Kommodo_gas", function () {
-    it('Kommodo gas analyses', async function () {          
+    it('Kommodo gas analyses', async function () {      
       const [owner, signer2] = await ethers.getSigners()
       let base = new bn(10)
       let amount = base.pow("18")
@@ -166,13 +168,13 @@ describe("Kommodo_gas", function () {
       //Create estimate
       sqrtPrice = encodePriceSqrt(1,1)
       tokenB = await Tokens.deploy()
-      if(tokenA.address < weth.address) {a
+      if(tokenB.address < weth.address) {
         tokenAdress0 = tokenB.address;
         tokenAdress1 = weth.address
       } else {
         tokenAdress0 = weth.address;
         tokenAdress1 = tokenB.address
-      }
+      }         
       await nonfungiblePositionManager.connect(owner).createAndInitializePoolIfNecessary(
           tokenAdress0,
           tokenAdress1,

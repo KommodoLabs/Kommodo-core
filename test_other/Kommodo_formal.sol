@@ -8,6 +8,10 @@ import '../contracts/interfaces/IKommodo.sol';
 import './MockUniPool.sol';
 import '../contracts/test/Token.sol';
 
+
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+
 contract KommodoTestFormal is Test {
     address mockUniPool;
     Kommodo kommodo;
@@ -31,11 +35,9 @@ contract KommodoTestFormal is Test {
         mockUniPool = MockUniswap;
         vm.etch(MockUniswap, type(MockUniPool).runtimeCode);
         assertGt(MockUniswap.code.length, 0);
-
         //Deploy token
         vm.etch(TOKEN0, type(Token).runtimeCode);
         vm.etch(TOKEN1, type(Token).runtimeCode);
-
         //Deploy kommodo pool
         IKommodo.CreateParams memory create_params = IKommodo.CreateParams({
             factory: UNI_FACTORY,
@@ -45,8 +47,18 @@ contract KommodoTestFormal is Test {
             fee: 500,
             multiplier: 5
         });
-        kommodo = new Kommodo(create_params);
+        Kommodo implementation = new Kommodo();
+        bytes memory initData = abi.encodeWithSelector(
+            Kommodo.initialize.selector,
+            create_params
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            initData
+        );
+        kommodo = Kommodo(address(proxy));
     } 
+
     function check_kommodo_lender_provide(
         uint128 amountA,
         uint128 amountB

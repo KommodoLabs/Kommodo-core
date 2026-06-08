@@ -135,8 +135,10 @@ describe("Kommodo_test", function () {
     mockRouter = await MockRouter.deploy()
       //console.log('mockRouter', mockRouter.address)      
     //Deploy kommodo factory
+    Kommodo = new ContractFactory(artifacts.Kommodo.abi, artifacts.Kommodo.bytecode, owner)
+    kommodoImplementation = await Kommodo.deploy()
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
-    kommodoFactory = await KommodoFactory.deploy(factory.address, 5)
+    kommodoFactory = await KommodoFactory.deploy(factory.address, 5, kommodoImplementation.address)
       //console.log('kommodoFactory', kommodoFactory.address)
     //Deploy kommodo
     await kommodoFactory.connect(owner).createKommodo(

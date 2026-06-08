@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity =0.8.24;
 
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3MintCallback.sol';
@@ -14,7 +16,7 @@ import './libraries/PoolAddress.sol';
 import './libraries/SqrtPriceMath.sol'; 
 import './libraries/CallbackValidation.sol';
 
-abstract contract Connector is IConnector, IUniswapV3MintCallback {
+abstract contract Connector is IConnector, IUniswapV3MintCallback, Initializable {
     
     /// @inheritdoc IConnector
     address public override factory;
@@ -27,8 +29,10 @@ abstract contract Connector is IConnector, IUniswapV3MintCallback {
         address payer;
     }
 
-    constructor(address _factory) {
-        factory = _factory;
+    /// @notice On setup stores the Uniswap v3 factory
+    /// @param _factory The address of the Uniswap v3 factory
+    function __Connector_init(address _factory) internal onlyInitializing {
+            factory = _factory;
     }
 
     /// @inheritdoc IUniswapV3MintCallback

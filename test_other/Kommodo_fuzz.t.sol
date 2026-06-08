@@ -53,9 +53,9 @@ contract KommodoTestFuzz is Test {
         uniPool = IUniswapV3Pool(0x949fFf0C0AdEcF746169BBfBD680B04eABeFAe8A);
         mockRouter = Router(0x5FC8d32690cc91D4c39d9d3abcBD16989F875707);
         //Setup kommodo pool
-        kommodoFactory = IKommodoFactory(0xa513E6E4b8f2a923D98304ec87F64353C4D5C853);
-        kommodoPool = IKommodo(0x9bd03768a7DCc129555dE410FF8E85528A4F88b5);
-        kommodoLendManager = INonfungibleLendManager(0x8A791620dd6260079BF849Dc5567aDC3F2FdC318);
+        kommodoFactory = IKommodoFactory(0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6);
+        kommodoPool = IKommodo(0x94099942864EA81cCF197E9D71ac53310b1468D8);
+        kommodoLendManager = INonfungibleLendManager(0x610178dA211FEF7D417bC0e6FeD39F05609AD788);
         //Mint && approve tokens
         vm.startPrank(lender);
         weth.deposit{value: 100 ether}();
@@ -70,7 +70,7 @@ contract KommodoTestFuzz is Test {
         weth2.approve(address(kommodoPool), 100 ether);
         vm.stopPrank();
     } 
-    
+
     function test_fuzz_kommodo_provide(uint128 depositAmount) public {   
         vm.startPrank(lender);
         //Pre conditions

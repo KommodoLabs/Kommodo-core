@@ -104,9 +104,6 @@ interface IKommodo {
         uint256 borB
     );
 
-
-
-
     // @notice Emitted when interest is adjusted
     /// @param token0 The bool value indicating use of collateral token0 or token1
     /// @param owner The address that owns the position
@@ -120,8 +117,6 @@ interface IKommodo {
         uint128 interest,
         int128 delta    
     );
-
-
 
     /// @notice The first of the two tokens of the pool, sorted by address
     /// @return token contract address
@@ -263,6 +258,11 @@ interface IKommodo {
         // multiplier used for kommodo fee, multiplies the underlying Uniswap v3 pool fee
         uint24 multiplier;  
     } 
+
+    /// @notice Initialize the kommodo pool
+    /// @dev Use of initialize because of proxy factory design.
+    /// @param params CreateParams factory/tokenA/tokenB/tickSpacing/fee/multiplier
+    function initialize(CreateParams calldata params) external;
 
     // input params for providing to lender position
     struct ProvideParams { 

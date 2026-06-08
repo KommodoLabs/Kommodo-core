@@ -12,6 +12,11 @@ interface IKommodoFactory {
     /// @return The multiplier used for all kommodo pools created through this factory
     function multiplier() external view returns (uint24);
 
+    /// @notice Returns the Kommodo pool implementation address
+    /// @dev Factory uses a proxy design for gas efficient deployment of Kommodo pools. This requires the factory using a reference implementation.
+    /// @return The address of the Kommodo pool implementation
+    function implementation() external view returns (address);
+
     /// @notice Returns the Kommodo pool address for a given pair of tokens and a fee, or address 0 if it does not exist
     /// @dev assetA and assetB may be passed in either token0/token1 or token1/token0 order
     /// @param assetA The contract address of either token0 or token1
