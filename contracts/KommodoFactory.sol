@@ -16,7 +16,7 @@ contract KommodoFactory is IKommodoFactory {
     address public immutable override factory;
     /// @inheritdoc IKommodoFactory
     uint24 public immutable override multiplier;
-    
+
     /// @inheritdoc IKommodoFactory
     address public immutable implementation;
 
@@ -52,7 +52,7 @@ contract KommodoFactory is IKommodoFactory {
         require(assetA != assetB, "create: identical assets");
         (address token0, address token1) = assetA < assetB ? (assetA, assetB) : (assetB, assetA);
         require(token0 != address(0), 'create: no address zero');
-        require(kommodo[assetA][assetB][poolFee] == address(0), "create: existing pool");
+        require(kommodo[token0][token1][poolFee] == address(0), "create: existing pool");
         int24 tickSpacing = IUniswapV3Factory(factory).feeAmountTickSpacing(poolFee);
         require(tickSpacing != 0, "create: invalid poolFee");
         address clone = implementation.clone();
@@ -66,8 +66,8 @@ contract KommodoFactory is IKommodoFactory {
                 multiplier: multiplier
             })
         );
-        kommodo[assetA][assetB][poolFee] = clone;
-        kommodo[assetB][assetA][poolFee] = clone;
+        kommodo[token0][token1][poolFee] = clone;
+        kommodo[token1][token0][poolFee] = clone;
         allKommodo.push(clone);
         return(clone);
     }
