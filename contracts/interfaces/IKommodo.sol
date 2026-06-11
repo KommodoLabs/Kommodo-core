@@ -245,8 +245,6 @@ interface IKommodo {
 
     // input params for constructor
     struct CreateParams { 
-        // Uniswap v3 factory address
-        address factory;
         // first of the two tokens of the pool, sorted by address
         address tokenA; 
         // second of the two tokens of the pool, sorted by address
@@ -261,7 +259,7 @@ interface IKommodo {
 
     /// @notice Initialize the kommodo pool
     /// @dev Use of initialize because of proxy factory design.
-    /// @param params CreateParams factory/tokenA/tokenB/tickSpacing/fee/multiplier
+    /// @param params CreateParams tokenA/tokenB/tickSpacing/fee/multiplier
     function initialize(CreateParams calldata params) external;
 
     // input params for providing to lender position

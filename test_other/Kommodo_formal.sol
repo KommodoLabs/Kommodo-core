@@ -40,14 +40,13 @@ contract KommodoTestFormal is Test {
         vm.etch(TOKEN1, type(Token).runtimeCode);
         //Deploy kommodo pool
         IKommodo.CreateParams memory create_params = IKommodo.CreateParams({
-            factory: UNI_FACTORY,
             tokenA: TOKEN0,
             tokenB: TOKEN1,
             tickSpacing: TICKSPACING,
             fee: 500,
             multiplier: 5
         });
-        Kommodo implementation = new Kommodo();
+        Kommodo implementation = new Kommodo(UNI_FACTORY);
         bytes memory initData = abi.encodeWithSelector(
             Kommodo.initialize.selector,
             create_params

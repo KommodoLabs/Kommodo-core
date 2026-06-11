@@ -19,7 +19,7 @@ import './libraries/CallbackValidation.sol';
 abstract contract Connector is IConnector, IUniswapV3MintCallback, Initializable {
     
     /// @inheritdoc IConnector
-    address public override factory;
+    address public immutable override factory;
 
     // Uniswap v3 callback data
     struct MintCallbackData {
@@ -29,10 +29,8 @@ abstract contract Connector is IConnector, IUniswapV3MintCallback, Initializable
         address payer;
     }
 
-    /// @notice On setup stores the Uniswap v3 factory
-    /// @param _factory The address of the Uniswap v3 factory
-    function __Connector_init(address _factory) internal onlyInitializing {
-            factory = _factory;
+    constructor(address _factory) {
+        factory = _factory;
     }
 
     /// @inheritdoc IUniswapV3MintCallback

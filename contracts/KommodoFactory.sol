@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/proxy/Clones.sol";
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 
 import './interfaces/IKommodoFactory.sol';
+import './interfaces/IConnector.sol';
 import './interfaces/IKommodo.sol';
 
 contract KommodoFactory is IKommodoFactory {
@@ -32,6 +33,7 @@ contract KommodoFactory is IKommodoFactory {
         require(_factory != address(0), "constructor: zero factory"); 
         require(_multiplier != 0, "constructor: zero mulitplier"); 
         require(_implementation != address(0), "constructor: zero implementation");
+        require(IConnector(_implementation).factory() == _factory, "constructor: factory mismatch");
         factory = _factory;
         multiplier = _multiplier;
         implementation = _implementation;
@@ -57,7 +59,6 @@ contract KommodoFactory is IKommodoFactory {
         address clone = implementation.clone();
         IKommodo(clone).initialize(
             IKommodo.CreateParams({
-                factory: factory,
                 tokenA: token0,
                 tokenB: token1,
                 tickSpacing: tickSpacing,

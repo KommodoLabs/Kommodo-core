@@ -130,7 +130,7 @@ describe("Kommodo_gas", function () {
       //console.log('mockRouter', mockRouter.address)      
     //Deploy kommodofactory
     Kommodo = new ContractFactory(artifacts.Kommodo.abi, artifacts.Kommodo.bytecode, owner)
-    kommodoImplementation = await Kommodo.deploy()
+    kommodoImplementation = await Kommodo.deploy(factory.address)
     KommodoFactory = new ContractFactory(artifacts.KommodoFactory.abi, artifacts.KommodoFactory.bytecode, owner)
     kommodoFactory = await KommodoFactory.deploy(factory.address, 5, kommodoImplementation.address)
       //console.log('kommodoFactory', kommodoFactory.address)
@@ -157,7 +157,7 @@ describe("Kommodo_gas", function () {
       //console.log('nonfungibleLendManager', nonfungibleLendManager.address)
 	})
   describe("Kommodo_gas", function () {
-    it('Kommodo gas analyses', async function () {      
+    it('Kommodo gas analyses', async function () {     
       const [owner, signer2] = await ethers.getSigners()
       let base = new bn(10)
       let amount = base.pow("18")
@@ -430,5 +430,3 @@ describe("Kommodo_gas", function () {
     })
   })
 })
-
-

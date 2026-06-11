@@ -85,7 +85,7 @@ async function main() {
 
   // Deploy Kommodo Factory
   const Kommodo = new ethers.ContractFactory(KOMMODO_ABI, KOMMODO_BYTECODE, deployer);
-  const kommodoImplementation = await Kommodo.deploy();
+  const kommodoImplementation = await Kommodo.deploy(factory.address);
   await kommodoImplementation.deployed();
   console.log("KommodoImplementation deployed at:", kommodoImplementation.address);
 

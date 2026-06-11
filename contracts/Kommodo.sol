@@ -33,14 +33,13 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
     /// @inheritdoc IKommodo
     mapping(bytes32 => Loan) public override borrower;
 
-    constructor() {
+    constructor(address factory) Connector(factory) {
         _disableInitializers();
     }
 
     /// @inheritdoc IKommodo
     function initialize(CreateParams memory params) external initializer {
         require(params.multiplier * params.fee <= 1e6, "initialize: interest overflow");
-        __Connector_init(params.factory);
         tokenA = params.tokenA;
         tokenB = params.tokenB;
         fee = params.fee;
