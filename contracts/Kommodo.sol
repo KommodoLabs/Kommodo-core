@@ -224,16 +224,19 @@ contract Kommodo is IKommodo, Connector, ReentrancyGuard {
     function updateInterest(bool token0,  int24 tickBor, address owner) public override nonReentrant {
         Assets storage _assets = assets[tickBor];  
         Loan storage loan = borrower[getKey(owner, tickBor, token0)];
-        uint256 used = getInterest(loan.amountCol, loan.start, block.timestamp); 
-        require(loan.interest >= used, "updateInterest: unclosed loan"); 
-        loan.interest = loan.interest - used.toUint128();
-        loan.start = block.timestamp;
-        //Store used interest - notice: overflow is safe for feegrowth
-        if(token0){
-            unchecked{_assets.feeGrowth0X128 += FullMath.mulDiv(used.toUint128(), FixedPoint128.Q128, _assets.liquidity);}
-        } else {
-            unchecked{_assets.feeGrowth1X128 += FullMath.mulDiv(used.toUint128(), FixedPoint128.Q128, _assets.liquidity);} 
-        }
+        // Allow max daily updates to mitigate rounding usage
+        if(block.timestamp - loan.start > 86400){
+            uint256 used = getInterest(loan.amountCol, loan.start, block.timestamp); 
+            require(loan.interest >= used, "updateInterest: unclosed loan"); 
+            loan.interest = loan.interest - used.toUint128();
+            loan.start = block.timestamp;
+            //Store used interest - notice: overflow is safe for feegrowth
+            if(token0){
+                unchecked{_assets.feeGrowth0X128 += FullMath.mulDiv(used.toUint128(), FixedPoint128.Q128, _assets.liquidity);}
+            } else {
+                unchecked{_assets.feeGrowth1X128 += FullMath.mulDiv(used.toUint128(), FixedPoint128.Q128, _assets.liquidity);} 
+            }
+        } 
     }
 
     /// @dev Internal function to split from public function for nonreentrant modifier.

@@ -170,7 +170,6 @@ describe("Kommodo_test", function () {
     tickupper = ticklower + spacing
 	})
 
-
   describe("Kommodo_test_happy", function () {        
     before(async function () {
       //Mint tokens and approve kommodo
@@ -294,10 +293,19 @@ describe("Kommodo_test", function () {
       await kommodo.connect(account2).updateInterest(
         false,                                //tokenA as collateral
         ticklower,                            //tick lower borrow
-        account1.address                       //owner
+        account1.address                      //owner
       )
       post_loan = await kommodo.borrower(borrowKey)
-      expect(pre_loan.start.add("1")).to.equal(post_loan.start)
+      expect(pre_loan.start).to.equal(post_loan.start)
+      //update time
+      await time.increase(86400);
+      await kommodo.connect(account2).updateInterest(
+        false,                                //tokenA as collateral
+        ticklower,                            //tick lower borrow
+        account1.address                      //owner
+      ) 
+      post_time_loan = await kommodo.borrower(borrowKey)
+      expect(pre_loan.start).to.not.equal(post_time_loan.start)
     })
     it('Should decrease interest loan', async function () {
       balance0Before = await tokenA.balanceOf(account1.address)
@@ -364,6 +372,7 @@ describe("Kommodo_test", function () {
       expect(borrower_after.start).to.equal("0")      
       expect(available_liquidity).to.equal(total_liquidity_after.liquidity)
       expect(total_liquidity_after.liquidity).to.equal(total_liquidity_before.liquidity)
+    
     }) 
     it('Should provide correct interest', async function () {
       assets = await kommodo.assets(ticklower)

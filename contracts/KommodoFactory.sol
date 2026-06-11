@@ -7,7 +7,6 @@ import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 
 import './interfaces/IKommodoFactory.sol';
 import './interfaces/IKommodo.sol';
-import './Kommodo.sol';
 
 contract KommodoFactory is IKommodoFactory {
     using Clones for address;

@@ -391,6 +391,7 @@ interface IKommodo {
 
     /// @notice Update interest used for borrow positions
     /// @dev Allows anyone to update the interest used of active borrow positions.
+    /// @dev Only allows daily (86400 second) updates. Multiple update calls within this timeframe succeed but do not update usage.
     /// @param token0 bool value indicating use of collateral token0 or token1 for borrow position
     /// @param tickBor tick at which borrowed
     /// @param owner owner of the borrow positions
