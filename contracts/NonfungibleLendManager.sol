@@ -136,7 +136,7 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable, Re
                 FixedPoint128.Q128
             )
         );
-        _position.locked = position[params.tokenId].blocknumber < block.number ? delta : position[params.tokenId].locked + delta;
+        _position.paused = position[params.tokenId].blocknumber < block.number ? delta : position[params.tokenId].paused + delta;
         _position.blocknumber = block.number;
         _position.liquidity += delta;
         _position.feeGrowth0X128 = feeGrowth0X128;
@@ -152,14 +152,21 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable, Re
     function take(TakeParams calldata params) public override isAuthorizedForToken(params.tokenId) nonReentrant {
         Position storage _position = position[params.tokenId];
         IKommodo pool = IKommodo(_position.pool);
-        //Remove liquidity from pool
-        (uint256 amountA, uint256 amountB) = pool.take(
-            IKommodo.TakeParams({
-            tickLower: _position.tickLower,
-            liquidity: params.liquidity,
-            amountMinA: params.amountMinA,
-            amountMinB: params.amountMinB
-        }));      
+        _position.paused = _position.blocknumber < block.number ? 0 : _position.paused;
+        require(_position.liquidity - _position.paused >= params.liquidity, "take: liquidity paused");
+        //Remove liquidity from pool and/or update Uniswap v3 pool feegrowth
+        uint256 amountA;
+        uint256 amountB;
+        (uint128 supply , uint128 locked, , ) = pool.assets(_position.tickLower);
+        if(supply > locked){
+            (amountA, amountB) = pool.take(
+                IKommodo.TakeParams({
+                tickLower: _position.tickLower,
+                liquidity: params.liquidity,
+                amountMinA: params.amountMinA,
+                amountMinB: params.amountMinB
+            }));
+        } 
         //Store position - notice: overflow is safe for feegrowth
         (   , ,   
             uint256 feeGrowth0X128, 
@@ -187,60 +194,28 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable, Re
                     FixedPoint128.Q128
                 )
             );
-        _position.locked = _position.blocknumber < block.number ? 0 : _position.locked;
-        require(_position.liquidity - _position.locked >= params.liquidity, "take: liquidity locked");
         _position.blocknumber = block.number;
         _position.liquidity -= params.liquidity;
         _position.feeGrowth0X128 = feeGrowth0X128;
         _position.feeGrowth1X128 = feeGrowth1X128;
-        //Withdraw amounts 
-        startWithdraw(WithdrawParams({
-            tokenId: params.tokenId, 
-            amountA: type(uint128).max, 
-            amountB: type(uint128).max, 
-            recipient: params.recipient
-        }));
+        //Withdraw amounts
+        if(params.withdrawA > 0 || params.withdrawB > 0) {
+            withdraw(WithdrawParams({
+                tokenId: params.tokenId, 
+                amountA: params.withdrawA, 
+                amountB: params.withdrawB, 
+                recipient: params.recipient
+            }));
+        }
     }
 
-    /// @inheritdoc INonfungibleLendManager
-    function withdraw(WithdrawParams memory params) public override isAuthorizedForToken(params.tokenId) nonReentrant {
-        startWithdraw(params);
-    }
-
-    /// @dev Internal function to split from public function for nonreentrant modifier.
+    /// @dev Internal function withdraws the amounts available for this position, can only be called by the NFT owner through take().
+    /// @dev By calling take() with liquidity zero all fees in the position are updated before withdraw. 
     /// @param params WithdrawParams tokenId/amountA/amountB/recipient
-    function startWithdraw(WithdrawParams memory params) internal {
+    function withdraw(WithdrawParams memory params) internal {
         Position storage _position = position[params.tokenId];
         IKommodo pool = IKommodo(_position.pool);
         require(params.recipient != address(0), "withdraw: zero recipient");
-        //Update position - notice: overflow is safe for feegrowth
-        if(_position.liquidity > 0){
-            (   , ,   
-                uint256 feeGrowth0X128, 
-                uint256 feeGrowth1X128 
-                
-            ) = pool.assets(_position.tickLower);
-            uint256 delta_feeGrowth0X128;
-            uint256 delta_feeGrowth1X128;   
-            unchecked{delta_feeGrowth0X128 = feeGrowth0X128 - _position.feeGrowth0X128;}
-            unchecked{delta_feeGrowth1X128 = feeGrowth1X128 - _position.feeGrowth1X128;}
-            _position.withdrawA += uint128(
-                FullMath.mulDiv(
-                    delta_feeGrowth0X128,
-                    _position.liquidity,
-                    FixedPoint128.Q128
-                )
-            );
-            _position.withdrawB += uint128(
-                FullMath.mulDiv(
-                    delta_feeGrowth1X128,
-                    _position.liquidity,
-                    FixedPoint128.Q128
-                )
-            );
-            _position.feeGrowth0X128 = feeGrowth0X128;
-            _position.feeGrowth1X128 = feeGrowth1X128;
-        }
         //Withdraw amounts from position
         uint128 withdrawA = _position.withdrawA > params.amountA ? params.amountA : _position.withdrawA;
         uint128 withdrawB = _position.withdrawB > params.amountB ? params.amountB : _position.withdrawB;

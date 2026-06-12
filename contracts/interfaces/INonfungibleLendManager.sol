@@ -17,7 +17,7 @@ interface INonfungibleLendManager {
         // tick of the position
         int24 tickLower;
         // liquidity locked for withdraw 
-        uint128 locked;
+        uint128 paused;
         // liquidity in the position
         uint128 liquidity;
         // last updated blocknumber for locked liquidity
@@ -36,7 +36,7 @@ interface INonfungibleLendManager {
     /// @param tokenId The id of the NFT
     /// @return pool The Kommodo pool address
     /// @return tickLower The tick of the position
-    /// @return locked The liquidity locked for withdraw
+    /// @return paused The liquidity locked for withdraw
     /// @return liquidity The liquidity in the position
     /// @return blocknumber The last updated blocknumber for locked liquidity
     /// @return feeGrowth0X128 The fee growth of token0 for this position 
@@ -47,7 +47,7 @@ interface INonfungibleLendManager {
         external returns(
             address pool,
             int24 tickLower,
-            uint128 locked,
+            uint128 paused,
             uint128 liquidity,
             uint256 blocknumber,
             uint256 feeGrowth0X128,
@@ -123,10 +123,17 @@ interface INonfungibleLendManager {
         // minimum token1 amount for liquidity to remove
         uint128 amountMinB; 
         // receiver of the withdrawn assets
-        address recipient;   
+        address recipient;
+        // maximum token0 amount to withdraw when available
+        uint128 withdrawA; 
+        // maximum token1 amount to withdraw when available
+        uint128 withdrawB;
     }
 
     /// @notice Decreases the amount of liquidity in a position, can only be called by the NFT owner
+    /// @dev Call this function with liquidity=0 before every NFT transfer to withdraw all (claimed and unclaimed) fees.
+    /// @dev Call this function with withdrawA and withdrawB zero to only update withdraw amounts without gas expensive transfer.
+    /// @dev Calling a zero position burn() reverts on Uniswap v3. Checks if supply > locked (liquidity non zero) before calling pool.take() -> pool.burn().
     /// @param params TakeParams tokenId/liquidity/amountMinA/amountMinB/recipient
     function take(TakeParams calldata params) external;
 
@@ -141,10 +148,6 @@ interface INonfungibleLendManager {
         // receiver of the withdrawn assets  
         address recipient; 
     }
-
-    /// @notice Withdraw the amounts available for this position, can only be called by the NFT owner
-    /// @param params WithdrawParams tokenId/amountA/amountB/recipient
-    function withdraw(WithdrawParams calldata params) external;
 
     /// @notice Remove empty NFT, can only be called by the NFT owner
     /// @param tokenId The identifier of the NFT

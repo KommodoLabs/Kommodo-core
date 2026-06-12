@@ -395,7 +395,9 @@ describe("Kommodo_gas", function () {
           liquidity: liq_nft.toString(),                         
           amountMinA: 0,                   
           amountMinB: 0,
-          recipient: signer2.address                                 
+          recipient: signer2.address,
+          withdrawA: deposit,
+          withdrawB: deposit                                    
         }
       )
       console.log("take AMM NFT: ", gasTakeNFT.toString());
@@ -405,24 +407,32 @@ describe("Kommodo_gas", function () {
           liquidity: liq_nft.toString(),                         
           amountMinA: 0,                   
           amountMinB: 0,
-          recipient: signer2.address                                       
+          recipient: signer2.address,
+          withdrawA: deposit,
+          withdrawB: deposit                                      
         }
       )
-      gasWithdrawNFT = await nonfungibleLendManager.connect(signer2).estimateGas.withdraw(
+      gasWithdrawNFT = await nonfungibleLendManager.connect(signer2).estimateGas.take(
         {
-          tokenId: 1,                   
-          amountA: deposit,                   
-          amountB: deposit,    
-          recipient: signer2.address                             
+          tokenId: 1,
+          liquidity: 0,                         
+          amountMinA: 0,                   
+          amountMinB: 0,
+          recipient: signer2.address,
+          withdrawA: deposit,
+          withdrawB: deposit                                    
         }
       )
       console.log("withdraw AMM NFT: ", gasWithdrawNFT.toString());
-      await nonfungibleLendManager.connect(signer2).withdraw(
+      await nonfungibleLendManager.connect(signer2).take(
         {
-          tokenId: 1,                   
-          amountA: deposit,                   
-          amountB: deposit,    
-          recipient: signer2.address                             
+          tokenId: 1,
+          liquidity: 0,                         
+          amountMinA: 0,                   
+          amountMinB: 0,
+          recipient: signer2.address,
+          withdrawA: deposit,
+          withdrawB: deposit                                      
         }
       )
       gasBurnwNFT = await nonfungibleLendManager.connect(signer2).estimateGas.burn(1)

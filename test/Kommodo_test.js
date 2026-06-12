@@ -822,7 +822,7 @@ describe("Kommodo_test", function () {
       nft_position = await nonfungibleLendManager.position(tokenId)
       expect(nft_position.pool).to.equal(kommodo.address)
       expect(nft_position.liquidity).to.equal(kommodo_position.liquidity)
-      expect(nft_position.locked).to.equal(nft_position.liquidity)
+      expect(nft_position.paused).to.equal(nft_position.liquidity)
     })
     it('Should provide NFT', async function () { 
       before_balanceA = await tokenA.balanceOf(account2.address)
@@ -866,7 +866,9 @@ describe("Kommodo_test", function () {
           liquidity: liq_nft.div(2).toString(),                         
           amountMinA: 0,                   
           amountMinB: 0,
-          recipient: account2.address      
+          recipient: account2.address,
+          withdrawA: deposit,
+          withdrawB: deposit         
         }
       )
       //Check position
@@ -915,12 +917,15 @@ describe("Kommodo_test", function () {
       //Withdraw from NFT lending position
       before_balanceA = await tokenA.balanceOf(account2.address)
       before_balanceB = await weth.balanceOf(account2.address)
-      await nonfungibleLendManager.connect(account2).withdraw(
+      await nonfungibleLendManager.connect(account2).take(
         {
-          tokenId: 1,                   
-          amountA: deposit,                   
-          amountB: deposit,    
-          recipient: account2.address   
+          tokenId: 1,
+          liquidity: 0,                         
+          amountMinA: 0,                   
+          amountMinB: 0,
+          recipient: account2.address,
+          withdrawA: deposit,
+          withdrawB: deposit         
         }
       )
       after_balanceA = await tokenA.balanceOf(account2.address)
@@ -936,7 +941,9 @@ describe("Kommodo_test", function () {
           liquidity: liq_nft,                         
           amountMinA: 0,                   
           amountMinB: 0,
-          recipient: account2.address      
+          recipient: account2.address,
+          withdrawA: deposit,
+          withdrawB: deposit         
         }
       )
       await nonfungibleLendManager.connect(account2).burn(1)
