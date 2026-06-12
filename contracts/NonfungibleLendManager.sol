@@ -195,7 +195,7 @@ contract NonfungibleLendManager is INonfungibleLendManager, ERC721Enumerable, Re
                 )
             );
         _position.blocknumber = block.number;
-        _position.liquidity -= params.liquidity;
+        _position.liquidity -= supply > locked ? params.liquidity : 0;
         _position.feeGrowth0X128 = feeGrowth0X128;
         _position.feeGrowth1X128 = feeGrowth1X128;
         //Withdraw amounts
